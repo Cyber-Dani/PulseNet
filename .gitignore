@@ -1,0 +1,15 @@
+# Internal docs (PRDs, notes, etc.)
+docs/
+
+# Runtime data files (generated while the monitor is running)
+data/*.json
+
+# Tray monitor PID file
+.monitor.pid
+
+# Windows thumbnail cache
+Thumbs.db
+desktop.ini
+
+# macOS
+.DS_Store

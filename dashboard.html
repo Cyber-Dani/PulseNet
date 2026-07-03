@@ -1,0 +1,1213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PulseNet</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  /* ── Shared data colours (same across all themes) ─────────────── */
+  :root {
+    --green:  #22c55e;
+    --amber:  #f59e0b;
+    --red:    #ef4444;
+    --rx:     #3b82f6;
+    --tx:     #22c55e;
+    --rssi:   #f59e0b;
+    --sig:    #a78bfa;
+    --ping:   #fb923c;
+  }
+
+  /* ── Midnight (default) ─────────────────────────────────────── */
+  :root, [data-theme="midnight"] {
+    --bg:      #0d0f12;
+    --surface: #13161b;
+    --border:  #1e2229;
+    --border2: #2a2f38;
+    --text:    #e2e6ed;
+    --muted:   #8b95a8;
+    --accent:  #3b82f6;
+  }
+
+  /* ── Dusk — dark navy & teal ─────────────────────────────────── */
+  [data-theme="dusk"] {
+    --bg:      #171e2d;
+    --surface: #1e2740;
+    --border:  #283555;
+    --border2: #344468;
+    --text:    #cdd8e8;
+    --muted:   #7a8fa8;
+    --accent:  #3bb8c8;
+  }
+
+  /* ── Ember — warm charcoal ───────────────────────────────────── */
+  [data-theme="ember"] {
+    --bg:      #140e0b;
+    --surface: #1e1511;
+    --border:  #2e1f17;
+    --border2: #3e2c22;
+    --text:    #ede0d8;
+    --muted:   #9a8070;
+    --accent:  #e07548;
+  }
+
+  /* ── Daylight — clean white ──────────────────────────────────── */
+  [data-theme="daylight"] {
+    --bg:      #f0f2f6;
+    --surface: #ffffff;
+    --border:  #dde1ea;
+    --border2: #c2c8d4;
+    --text:    #111318;
+    --muted:   #5a6478;
+    --accent:  #3b82f6;
+  }
+
+  /* ── Arctic — icy blue ───────────────────────────────────────── */
+  [data-theme="arctic"] {
+    --bg:      #e0eff8;
+    --surface: #f2f9fc;
+    --border:  #bcd8ec;
+    --border2: #96c0d8;
+    --text:    #0c2030;
+    --muted:   #386878;
+    --accent:  #1a8fb0;
+  }
+
+  /* ── Sakura — blush pink ─────────────────────────────────────── */
+  [data-theme="sakura"] {
+    --bg:      #fdf0f4;
+    --surface: #ffffff;
+    --border:  #f0d8e4;
+    --border2: #e0bece;
+    --text:    #280e1a;
+    --muted:   #885060;
+    --accent:  #c83868;
+  }
+
+  /* ── Lavender — soft violet ──────────────────────────────────── */
+  [data-theme="lavender"] {
+    --bg:      #f2eef8;
+    --surface: #faf8ff;
+    --border:  #ddd4f0;
+    --border2: #c8bae4;
+    --text:    #1c1430;
+    --muted:   #685098;
+    --accent:  #7048c8;
+  }
+
+  /* ── Terracotta — warm clay & teal ──────────────────────────── */
+  [data-theme="terracotta"] {
+    --bg:      #fdf4ee;
+    --surface: #fffaf6;
+    --border:  #f0ddd0;
+    --border2: #e0c8b4;
+    --text:    #2a1610;
+    --muted:   #7a5040;
+    --accent:  #2ab098;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    min-height: 100vh;
+    padding: 24px;
+    overflow-x: hidden;
+  }
+
+  header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  h1 {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 16px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  #status {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  #status.live::before {
+    content: '';
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--green);
+    margin-right: 6px;
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .card::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+  }
+
+  .card.rx::after      { background: var(--rx); }
+  .card.tx::after      { background: var(--tx); }
+  .card.rssi::after    { background: var(--rssi); }
+  .card.sig::after     { background: var(--sig); }
+  .card.ping::after    { background: var(--ping); }
+  .card.gateway::after { background: #06b6d4; }
+  .card.dns::after     { background: #8b5cf6; }
+  .card.jitter::after  { background: #ec4899; }
+
+  .pill {
+    display: inline-block;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    border-radius: 3px;
+    margin-left: 6px;
+    vertical-align: middle;
+  }
+  .pill-spike { background: rgba(245,158,11,0.15); color: var(--amber); }
+  .pill-loss  { background: rgba(239,68,68,0.15);  color: var(--red); }
+
+  .card-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+
+  .card-value {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 32px;
+    font-weight: 500;
+    line-height: 1;
+  }
+
+  .card-unit {
+    font-size: 14px;
+    color: var(--muted);
+    margin-left: 4px;
+  }
+
+  .card-delta {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    margin-top: 6px;
+    color: var(--muted);
+  }
+
+  .card-delta.up   { color: var(--green); }
+  .card-delta.down { color: var(--red); }
+
+  .meta {
+    display: flex;
+    gap: 24px;
+    margin-bottom: 20px;
+    padding: 12px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  .meta span { color: var(--text); }
+
+  .charts {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .chart-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px;
+    min-width: 0;
+  }
+
+  /* ── Timeline scrubber ──────────────────────────────────────── */
+  .timeline-wrap {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 0 0;
+  }
+
+  .timeline-input {
+    flex: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    background: var(--border2);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .timeline-input::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    transition: transform 0.1s;
+  }
+  .timeline-input::-webkit-slider-thumb:hover { transform: scale(1.25); }
+  .timeline-input::-moz-range-thumb {
+    width: 14px; height: 14px;
+    border: none;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+  }
+  .timeline-input:disabled { opacity: 0.35; cursor: default; }
+  .timeline-input:disabled::-webkit-slider-thumb { cursor: default; }
+
+  .timeline-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--muted);
+    white-space: nowrap;
+    min-width: 110px;
+    text-align: right;
+  }
+  .timeline-live { color: var(--green); }
+
+  .chart-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+
+  .chart-title {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .legend {
+    display: flex;
+    gap: 16px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .legend-dot {
+    width: 8px; height: 8px;
+    border-radius: 2px;
+  }
+
+  canvas { display: block; }
+
+  #error {
+    display: none;
+    margin-top: 24px;
+    padding: 16px;
+    background: rgba(239,68,68,0.08);
+    border: 1px solid rgba(239,68,68,0.2);
+    border-radius: 6px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--red);
+    line-height: 1.7;
+  }
+
+  .hdr-btn {
+    background: none;
+    border: 1px solid var(--border2);
+    border-radius: 4px;
+    color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 6px 14px;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s, background 0.15s;
+  }
+  .hdr-btn:hover  { border-color: var(--accent); color: var(--accent); }
+  .hdr-btn:active { background: rgba(59,130,246,0.08); }
+
+  /* ── Theme picker ──────────────────────────────────────────── */
+  #theme-picker { position: relative; display: inline-block; }
+
+  #theme-menu {
+    display: none;
+    position: absolute;
+    right: 0;
+    top: calc(100% + 8px);
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    border-radius: 10px;
+    padding: 12px;
+    z-index: 200;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+    width: 296px;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+  }
+  #theme-menu.open { display: grid; }
+
+  .theme-swatch {
+    cursor: pointer;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 2px solid transparent;
+    transition: border-color 0.15s, transform 0.1s;
+  }
+  .theme-swatch:hover    { border-color: var(--accent); transform: scale(1.04); }
+  .theme-swatch.active   { border-color: var(--accent); }
+
+  .swatch-preview { height: 44px; display: flex; flex-direction: column; }
+  .swatch-bg      { flex: 1; }
+  .swatch-bottom  { height: 13px; display: flex; }
+  .swatch-surface { flex: 1; }
+  .swatch-accent  { width: 36%; }
+
+  .swatch-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 8px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--muted);
+    text-align: center;
+    padding: 3px 2px 4px;
+    background: var(--surface);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+</style>
+<script>
+  // Apply saved theme before first paint to avoid flash
+  (function(){ var t=localStorage.getItem('wfm-theme'); if(t) document.documentElement.setAttribute('data-theme',t); })();
+</script>
+</head>
+<body>
+
+<header>
+  <div style="display:flex;align-items:center;gap:0">
+    <h1>PulseNet</h1>
+    <div style="width:1px;height:18px;background:var(--border2);margin:0 20px"></div>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px">
+    <div id="status">waiting for data</div>
+    <div id="theme-picker">
+      <button class="hdr-btn" onclick="toggleThemePicker(event)">Theme ▾</button>
+      <div id="theme-menu"></div>
+    </div>
+    <button class="hdr-btn" onclick="downloadReport()">&#8675; Download Report</button>
+  </div>
+</header>
+
+<div class="cards" style="grid-template-columns:repeat(6,1fr)">
+  <div class="card rx">
+    <div class="card-label">Link Speed ↓</div>
+    <div class="card-value" id="rx-val">—<span class="card-unit">Mbps</span></div>
+    <div class="card-delta" id="rx-delta">max negotiated, not actual speed</div>
+  </div>
+  <div class="card tx">
+    <div class="card-label">Link Speed ↑</div>
+    <div class="card-value" id="tx-val">—<span class="card-unit">Mbps</span></div>
+    <div class="card-delta" id="tx-delta">max negotiated, not actual speed</div>
+  </div>
+  <div class="card rssi">
+    <div class="card-label">RSSI</div>
+    <div class="card-value" id="rssi-val">—<span class="card-unit">dBm</span></div>
+    <div class="card-delta" id="rssi-delta">&nbsp;</div>
+  </div>
+  <div class="card sig">
+    <div class="card-label">Signal</div>
+    <div class="card-value" id="sig-val">—<span class="card-unit">%</span></div>
+    <div class="card-delta" id="sig-delta">&nbsp;</div>
+  </div>
+  <div class="card ping">
+    <div class="card-label">Latency</div>
+    <div class="card-value" id="ping-val">—<span class="card-unit">ms</span></div>
+    <div class="card-delta" id="ping-status">&nbsp;</div>
+  </div>
+  <div class="card" id="health-card" style="border-top-color:var(--muted)">
+    <div class="card-label">Connection Health</div>
+    <div class="card-value" id="health-val" style="font-size:15px;line-height:1.3;color:var(--muted)">—</div>
+    <div class="card-delta" id="health-detail">&nbsp;</div>
+  </div>
+</div>
+
+<div class="cards" style="grid-template-columns:repeat(6,1fr);margin-bottom:20px">
+  <div class="card gateway">
+    <div class="card-label">Gateway ping</div>
+    <div class="card-value" id="gw-val">—<span class="card-unit">ms</span></div>
+    <div class="card-delta" id="gw-ip" style="color:var(--muted);font-size:10px">&nbsp;</div>
+  </div>
+  <div class="card dns">
+    <div class="card-label">DNS resolve</div>
+    <div class="card-value" id="dns-val">—<span class="card-unit">ms</span></div>
+    <div class="card-delta" id="dns-status">&nbsp;</div>
+  </div>
+  <div class="card" style="border-top-color:var(--red)">
+    <div class="card-label">Loss streak</div>
+    <div class="card-value" id="streak-val" style="color:var(--muted)">0<span class="card-unit">drops</span></div>
+    <div class="card-delta" id="streak-status">&nbsp;</div>
+  </div>
+  <div class="card jitter">
+    <div class="card-label">Jitter</div>
+    <div class="card-value" id="jitter-val">—<span class="card-unit">ms</span></div>
+    <div class="card-delta" id="jitter-range">&nbsp;</div>
+  </div>
+  <div class="card" style="border-top-color:#94a3b8">
+    <div class="card-label">Access point</div>
+    <div class="card-value" id="bssid-val" style="font-size:13px;letter-spacing:0.04em">—</div>
+    <div class="card-delta" id="bssid-roam">&nbsp;</div>
+  </div>
+  <div class="card" style="border-top-color:#f43f5e">
+    <div class="card-label">Adapter errors</div>
+    <div class="card-value" id="err-val" style="color:var(--muted)">0<span class="card-unit">this interval</span></div>
+    <div class="card-delta" id="err-detail">&nbsp;</div>
+  </div>
+</div>
+
+<div class="meta">
+  SSID&nbsp;<span id="m-ssid">—</span>
+  &nbsp;&nbsp;Band&nbsp;<span id="m-band">—</span>
+  &nbsp;&nbsp;Channel&nbsp;<span id="m-ch">—</span>
+  &nbsp;&nbsp;Radio&nbsp;<span id="m-radio">—</span>
+</div>
+
+<div class="charts">
+  <div class="chart-wrap">
+    <div class="chart-header">
+      <div class="chart-title">WiFi Link Rate <span style="font-size:11px;color:var(--muted);text-transform:none;letter-spacing:0">(max negotiated speed, not actual speed)</span></div>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:var(--rx)"></div>Download link</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--tx)"></div>Upload link</div>
+      </div>
+    </div>
+    <div style="position:relative;height:200px"><canvas id="rateChart"></canvas></div>
+    <div class="timeline-wrap">
+      <input type="range" class="timeline-input" data-chart="rate" min="0" max="0" value="0" step="1">
+      <div class="timeline-label timeline-live">● Live</div>
+    </div>
+  </div>
+  <div class="chart-wrap">
+    <div class="chart-header">
+      <div class="chart-title">Signal quality</div>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:var(--rssi)"></div>RSSI (dBm)</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--sig)"></div>Signal %</div>
+      </div>
+    </div>
+    <div style="position:relative;height:180px"><canvas id="sigChart"></canvas></div>
+    <div class="timeline-wrap">
+      <input type="range" class="timeline-input" data-chart="sig" min="0" max="0" value="0" step="1">
+      <div class="timeline-label timeline-live">● Live</div>
+    </div>
+  </div>
+  <div class="chart-wrap">
+    <div class="chart-header">
+      <div class="chart-title">Latency &amp; packet loss</div>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-dot" style="background:var(--ping)"></div>Ping avg</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#ec4899"></div>Jitter</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--red);opacity:.6"></div>Spike</div>
+        <div class="legend-item"><div class="legend-dot" style="background:#94a3b8"></div>Roam</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div>Loss</div>
+      </div>
+    </div>
+    <div style="position:relative;height:180px"><canvas id="pingChart"></canvas></div>
+    <div class="timeline-wrap">
+      <input type="range" class="timeline-input" data-chart="ping" min="0" max="0" value="0" step="1">
+      <div class="timeline-label timeline-live">● Live</div>
+    </div>
+    <div id="event-log" style="margin-top:12px;font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--muted);max-height:100px;overflow-y:auto;line-height:1.8"></div>
+  </div>
+
+</div>
+
+<div id="error">
+  <strong>Cannot read data/wifi-data.json</strong><br><br>
+  Make sure the monitor is running — double-click <strong>Start-PulseNet.bat</strong> to start it.<br><br>
+  The dashboard will reload automatically once data is available.
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+function cssVar(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+
+function makeScales(extra) {
+  const tick = cssVar('--muted');
+  const grid = cssVar('--border');
+  const base = {
+    x: { ticks: { color: tick, font: { family: "'IBM Plex Mono'", size: 12 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 12 }, grid: { color: grid } },
+    y: { ticks: { color: tick, font: { family: "'IBM Plex Mono'", size: 12 } }, grid: { color: grid } }
+  };
+  return extra ? { ...base, ...extra } : base;
+}
+
+const cfg = {
+  responsive: true,
+  maintainAspectRatio: false,
+  animation: { duration: 400 },
+  plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
+  scales: makeScales()
+};
+
+const rateChart = new Chart(document.getElementById('rateChart'), {
+  type: 'line',
+  data: { labels: [], datasets: [
+    { label: 'Download link rate', data: [], borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.06)', tension: 0.3, pointRadius: 2, borderWidth: 1.5, fill: true },
+    { label: 'Upload link rate',   data: [], borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.06)', tension: 0.3, pointRadius: 2, borderDash: [4,3], borderWidth: 1.5, fill: true }
+  ]},
+  options: { ...cfg, scales: makeScales({ y: { ticks: { color: cssVar('--muted'), font: { family: "'IBM Plex Mono'", size: 12 } }, grid: { color: cssVar('--border') }, beginAtZero: false, title: { display: true, text: 'Mbps', color: cssVar('--muted'), font: { size: 12 } } } }) }
+});
+
+const pingChart = new Chart(document.getElementById('pingChart'), {
+  type: 'line',
+  data: { labels: [], datasets: [
+    { label: 'Ping avg', data: [], borderColor: '#fb923c', backgroundColor: 'rgba(251,146,60,0.06)', tension: 0.3, pointRadius: 0, borderWidth: 1.5, fill: true },
+    { label: 'Jitter',   data: [], borderColor: '#ec4899', backgroundColor: 'transparent', tension: 0.3, pointRadius: 0, borderWidth: 1, borderDash: [3,3] },
+  ]},
+  options: {
+    ...cfg,
+    spanGaps: false,
+    scales: makeScales({ y: { ticks: { color: cssVar('--muted'), font: { family: "'IBM Plex Mono'", size: 12 } }, grid: { color: cssVar('--border') }, beginAtZero: true, title: { display: true, text: 'ms', color: cssVar('--muted'), font: { size: 12 } } } })
+  }
+});
+
+const sigChart = new Chart(document.getElementById('sigChart'), {
+  type: 'line',
+  data: { labels: [], datasets: [
+    { label: 'RSSI', data: [], borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.06)', tension: 0.3, pointRadius: 2, borderWidth: 1.5, fill: true, yAxisID: 'y' },
+    { label: 'Signal %', data: [], borderColor: '#a78bfa', backgroundColor: 'rgba(167,139,250,0.06)', tension: 0.3, pointRadius: 2, borderDash: [4,3], borderWidth: 1.5, fill: true, yAxisID: 'y2' }
+  ]},
+  options: {
+    ...cfg,
+    scales: makeScales({
+      y:  { ticks: { color: cssVar('--muted'), font: { family: "'IBM Plex Mono'", size: 12 } }, grid: { color: cssVar('--border') }, position: 'left',  title: { display: true, text: 'dBm', color: cssVar('--muted'), font: { size: 12 } } },
+      y2: { ticks: { color: cssVar('--muted'), font: { family: "'IBM Plex Mono'", size: 12 } }, grid: { drawOnChartArea: false },          position: 'right', min: 0, max: 100, title: { display: true, text: '%',   color: cssVar('--muted'), font: { size: 12 } } }
+    })
+  }
+});
+
+let lastTs = null;
+let prev = null;
+let lastData = null;
+let lastHistory = [];
+
+const VIEWPORT = 60; // data points visible at once (~2 min of history)
+
+// Sticky Y-axis bounds: grow with data, never shrink
+const globalBounds = { rateMin: null, rateMax: null, pingMax: null, rssiMin: null, rssiMax: null };
+
+function updateGlobalBounds(h) {
+  for (const p of h) {
+    if (p.rx   != null) {
+      globalBounds.rateMax = globalBounds.rateMax == null ? p.rx : Math.max(globalBounds.rateMax, p.rx);
+      globalBounds.rateMin = globalBounds.rateMin == null ? p.rx : Math.min(globalBounds.rateMin, p.rx);
+    }
+    if (p.tx   != null) {
+      globalBounds.rateMax = globalBounds.rateMax == null ? p.tx : Math.max(globalBounds.rateMax, p.tx);
+      globalBounds.rateMin = globalBounds.rateMin == null ? p.tx : Math.min(globalBounds.rateMin, p.tx);
+    }
+    if (p.rssi != null) {
+      globalBounds.rssiMin = globalBounds.rssiMin == null ? p.rssi : Math.min(globalBounds.rssiMin, p.rssi);
+      globalBounds.rssiMax = globalBounds.rssiMax == null ? p.rssi : Math.max(globalBounds.rssiMax, p.rssi);
+    }
+    const pingVal = p.loss ? null : p.ping;
+    const jitVal  = p.loss ? null : p.jitter;
+    if (pingVal != null) globalBounds.pingMax = globalBounds.pingMax == null ? pingVal : Math.max(globalBounds.pingMax, pingVal);
+    if (jitVal  != null) globalBounds.pingMax = globalBounds.pingMax == null ? jitVal  : Math.max(globalBounds.pingMax, jitVal);
+  }
+}
+
+// Per-chart view offsets; -1 = live
+// Lookback offsets: 0 = live, positive = how many points back from the end.
+// Storing as lookback rather than absolute index keeps the scrubber thumb
+// visually stable as new data arrives and maxStart grows.
+const viewStarts = { rate: 0, sig: 0, ping: 0 };
+
+function getSlice(h, lookback) {
+  if (lookback === 0) return h.slice(Math.max(0, h.length - VIEWPORT));
+  const end = Math.max(VIEWPORT, h.length - lookback);
+  return h.slice(Math.max(0, end - VIEWPORT), end);
+}
+
+function syncScrubber(key, h) {
+  const tl  = document.querySelector(`.timeline-input[data-chart="${key}"]`);
+  const lbl = tl ? tl.nextElementSibling : null;
+  if (!tl) return;
+  const lookback = viewStarts[key];
+  const maxStart = Math.max(0, h.length - VIEWPORT);
+  // Keep max >= 1 so the browser renders the thumb at the right end.
+  // Disable the slider until there is actually history to scroll through.
+  tl.max      = Math.max(1, maxStart);
+  tl.value    = maxStart === 0 ? 1 : (maxStart - lookback);
+  tl.disabled = maxStart === 0;
+  if (lookback === 0) {
+    lbl.textContent = '● Live';
+    lbl.className   = 'timeline-label timeline-live';
+  } else {
+    const slice = getSlice(h, lookback);
+    const from  = slice.length ? timeFmt(slice[0].ts) : '—';
+    const to    = slice.length ? timeFmt(slice[slice.length - 1].ts) : '—';
+    lbl.textContent = from + ' → ' + to;
+    lbl.className   = 'timeline-label';
+  }
+}
+
+function renderRate(h) {
+  const slice  = getSlice(h, viewStarts.rate);
+  rateChart.data.labels = slice.map(p => timeFmt(p.ts));
+  rateChart.data.datasets[0].data = slice.map(p => p.rx);
+  rateChart.data.datasets[1].data = slice.map(p => p.tx);
+  if (globalBounds.rateMax != null) {
+    const range = globalBounds.rateMax - globalBounds.rateMin;
+    const pad   = (range || globalBounds.rateMax) * 0.1;
+    rateChart.options.scales.y.min = Math.floor(globalBounds.rateMin - pad);
+    rateChart.options.scales.y.max = Math.ceil(globalBounds.rateMax  + pad);
+  }
+  rateChart.update('none');
+  syncScrubber('rate', h);
+}
+
+function renderSig(h) {
+  const slice  = getSlice(h, viewStarts.sig);
+  sigChart.data.labels = slice.map(p => timeFmt(p.ts));
+  sigChart.data.datasets[0].data = slice.map(p => p.rssi);
+  sigChart.data.datasets[1].data = slice.map(p => p.sig);
+  if (globalBounds.rssiMin != null) {
+    const pad = Math.abs(globalBounds.rssiMax - globalBounds.rssiMin) * 0.1 || 2;
+    sigChart.options.scales.y.min = Math.floor(globalBounds.rssiMin - pad);
+    sigChart.options.scales.y.max = Math.ceil(globalBounds.rssiMax  + pad);
+  }
+  sigChart.update('none');
+  syncScrubber('sig', h);
+}
+
+function renderPing(h) {
+  const slice  = getSlice(h, viewStarts.ping);
+  pingChart.data.labels = slice.map(p => timeFmt(p.ts));
+  pingChart.data.datasets[0].data = slice.map(p => p.loss ? null : p.ping);
+  pingChart.data.datasets[0].pointRadius = slice.map(p => (p.spike || p.loss || p.roamed) ? 4 : 0);
+  pingChart.data.datasets[0].pointBackgroundColor = slice.map(p =>
+    p.loss ? '#ef4444' : p.roamed ? '#94a3b8' : p.spike ? '#f59e0b' : '#fb923c');
+  pingChart.data.datasets[1].data = slice.map(p => p.loss ? null : p.jitter);
+  if (globalBounds.pingMax != null) {
+    const pad = globalBounds.pingMax * 0.15;
+    pingChart.options.scales.y.max = Math.ceil(globalBounds.pingMax + pad);
+  }
+  pingChart.update('none');
+  syncScrubber('ping', h);
+}
+
+function renderCharts(h) {
+  updateGlobalBounds(h);
+  renderRate(h);
+  renderSig(h);
+  renderPing(h);
+}
+
+document.querySelectorAll('.timeline-input').forEach(tl => {
+  tl.addEventListener('input', e => {
+    const key      = e.target.dataset.chart;
+    const maxStart = parseInt(e.target.max) || 0;
+    const val      = parseInt(e.target.value);
+    // Convert slider position (right=live) to lookback offset
+    viewStarts[key] = Math.max(0, maxStart - val);
+    if (lastHistory.length === 0) return;
+    if (key === 'rate') renderRate(lastHistory);
+    else if (key === 'sig')  renderSig(lastHistory);
+    else if (key === 'ping') renderPing(lastHistory);
+  });
+});
+
+function fmt(v, unit) { return v != null ? v + '<span class="card-unit">' + unit + '</span>' : '—'; }
+
+function delta(el, curr, prev, higherIsBetter, stableText) {
+  if (curr == null || prev == null) { el.innerHTML = stableText || '&nbsp;'; el.className = 'card-delta'; return; }
+  const diff = curr - prev;
+  if (Math.abs(diff) < 0.5) { el.innerHTML = stableText || 'stable'; el.className = 'card-delta'; return; }
+  const sign = diff > 0 ? '+' : '';
+  const cls = (diff > 0) === higherIsBetter ? 'up' : 'down';
+  el.textContent = sign + diff.toFixed(1);
+  el.className = 'card-delta ' + cls;
+}
+
+function timeFmt(ts) {
+  const d = new Date(ts * 1000);
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+async function poll() {
+  try {
+    const r = await fetch('data/wifi-data.json?t=' + Date.now());
+    if (!r.ok) throw new Error('fetch failed');
+    const data = await r.json();
+    lastData = data;
+    document.getElementById('error').style.display = 'none';
+
+    if (data.updated === lastTs) return;
+    lastTs = data.updated;
+
+    const c = data.current;
+    const st = document.getElementById('status');
+    st.textContent = 'live — ' + timeFmt(data.updated);
+    st.className = 'live';
+
+    document.getElementById('rx-val').innerHTML = fmt(c.rx, 'Mbps');
+    document.getElementById('tx-val').innerHTML = fmt(c.tx, 'Mbps');
+    document.getElementById('rssi-val').innerHTML = fmt(c.rssi, 'dBm');
+    document.getElementById('sig-val').innerHTML = fmt(c.sig, '%');
+
+    if (prev) {
+      delta(document.getElementById('rx-delta'),   c.rx,   prev.rx,   true, 'max negotiated, not actual speed');
+      delta(document.getElementById('tx-delta'),   c.tx,   prev.tx,   true, 'max negotiated, not actual speed');
+      delta(document.getElementById('rssi-delta'), c.rssi, prev.rssi, true);
+      delta(document.getElementById('sig-delta'),  c.sig,  prev.sig,  true);
+    }
+    prev = c;
+
+    document.getElementById('m-ssid').textContent  = c.ssid  || '—';
+    document.getElementById('m-band').textContent  = c.band  || '—';
+    document.getElementById('m-ch').textContent    = c.ch    || '—';
+    document.getElementById('m-radio').textContent = c.radio || '—';
+
+    // Ping card
+    const pv = document.getElementById('ping-val');
+    const ps = document.getElementById('ping-status');
+    if (c.loss) {
+      pv.innerHTML = '<span style="color:var(--red)">loss</span>';
+      ps.innerHTML = '<span class="pill pill-loss">disconnected</span>';
+    } else if (c.ping != null) {
+      pv.innerHTML = c.ping + '<span class="card-unit">ms</span>';
+      ps.innerHTML = c.spike ? '<span class="pill pill-spike">spike</span>' : '&nbsp;';
+    } else {
+      pv.innerHTML = '—<span class="card-unit">ms</span>';
+      ps.innerHTML = '&nbsp;';
+    }
+
+    // Jitter card
+    const jv = document.getElementById('jitter-val');
+    const jr = document.getElementById('jitter-range');
+    if (c.jitter != null) {
+      jv.innerHTML = c.jitter + '<span class="card-unit">ms</span>';
+      jv.style.color = c.jitter > 20 ? 'var(--red)' : c.jitter > 8 ? 'var(--amber)' : 'var(--text)';
+      jr.textContent = (c.pingMin != null && c.pingMax != null) ? `min ${c.pingMin} / max ${c.pingMax}` : ' ';
+      jr.className = 'card-delta';
+    } else {
+      jv.innerHTML = '—<span class="card-unit">ms</span>';
+      jv.style.color = '';
+      jr.innerHTML = '&nbsp;';
+    }
+
+    // BSSID / roam card
+    const bv = document.getElementById('bssid-val');
+    const br = document.getElementById('bssid-roam');
+    bv.textContent = c.bssid ? c.bssid.toUpperCase() : '—';
+    if (c.roamed) {
+      br.innerHTML = '<span class="pill pill-loss">roamed</span>';
+    } else {
+      br.innerHTML = '&nbsp;';
+    }
+
+    // Adapter errors card
+    const ev = document.getElementById('err-val');
+    const ed = document.getElementById('err-detail');
+    const ae = c.adapterErrors;
+    if (ae) {
+      const total = (ae.rxErrors || 0) + (ae.txErrors || 0) + (ae.rxDiscards || 0) + (ae.txDiscards || 0);
+      ev.innerHTML = `<span style="color:${total > 0 ? 'var(--red)' : 'var(--muted)'}">${total}</span><span class="card-unit">this interval</span>`;
+      ed.textContent = total > 0
+        ? `err rx:${ae.rxErrors} tx:${ae.txErrors}  disc rx:${ae.rxDiscards} tx:${ae.txDiscards}`
+        : 'no errors or discards';
+      ed.className = 'card-delta' + (total > 0 ? ' down' : '');
+    } else {
+      ev.innerHTML = '—<span class="card-unit">ms</span>';
+      ed.innerHTML = '&nbsp;';
+    }
+
+    // Gateway card
+    const gwv = document.getElementById('gw-val');
+    const gwIp = document.getElementById('gw-ip');
+    if (c.gatewayLoss) {
+      gwv.innerHTML = '<span style="color:var(--red)">loss</span>';
+    } else if (c.gatewayMs != null) {
+      gwv.innerHTML = c.gatewayMs + '<span class="card-unit">ms</span>';
+    } else {
+      gwv.innerHTML = '—<span class="card-unit">ms</span>';
+    }
+    gwIp.textContent = c.gateway || '—';
+
+    // DNS card
+    const dnsv = document.getElementById('dns-val');
+    const dnss = document.getElementById('dns-status');
+    if (c.dnsLoss) {
+      dnsv.innerHTML = '<span style="color:var(--red)">fail</span>';
+      dnss.innerHTML = '<span class="pill pill-loss">no resolve</span>';
+    } else if (c.dnsMs != null) {
+      dnsv.innerHTML = c.dnsMs + '<span class="card-unit">ms</span>';
+      dnss.innerHTML = c.dnsMs > 500 ? '<span class="pill pill-spike">slow</span>' : '&nbsp;';
+    } else {
+      dnsv.innerHTML = '—<span class="card-unit">ms</span>';
+      dnss.innerHTML = '&nbsp;';
+    }
+
+    // Loss streak card
+    const strv = document.getElementById('streak-val');
+    const strs = document.getElementById('streak-status');
+    const streak = c.lossStreak || 0;
+    strv.innerHTML = `<span style="color:${streak > 0 ? 'var(--red)' : 'var(--muted)'}">${streak}</span><span class="card-unit">drops</span>`;
+    strs.textContent = streak > 0 ? `~${streak * 2}s of loss` : 'none';
+
+    const h = data.history;
+    lastHistory = h;
+    renderCharts(h);
+
+    // Event log
+    const events = h.filter(p => p.spike || p.loss || p.roamed ||
+      (p.adapterErrors && (p.adapterErrors.rxErrors + p.adapterErrors.txErrors +
+       p.adapterErrors.rxDiscards + p.adapterErrors.txDiscards) > 0)
+    ).slice(-20).reverse();
+    const logEl = document.getElementById('event-log');
+    if (events.length === 0) {
+      logEl.innerHTML = '<span style="color:var(--muted)">no spikes or disconnections in this window</span>';
+    } else {
+      logEl.innerHTML = events.map(p => {
+        const tags = [];
+        if (p.loss)   tags.push('<span class="pill pill-loss">loss</span>');
+        if (p.spike && !p.loss) tags.push('<span class="pill pill-spike">spike</span>');
+        if (p.roamed) tags.push('<span class="pill" style="background:rgba(148,163,184,0.15);color:#94a3b8">roamed</span>');
+        const ae = p.adapterErrors;
+        const aeTotal = ae ? (ae.rxErrors||0)+(ae.txErrors||0)+(ae.rxDiscards||0)+(ae.txDiscards||0) : 0;
+        if (aeTotal > 0) tags.push('<span class="pill" style="background:rgba(244,63,94,0.15);color:#f43f5e">adapter err</span>');
+
+        const parts = [];
+        if (p.loss) parts.push('internet: no reply');
+        else if (p.ping != null) parts.push(`internet: ${p.ping}ms`);
+        if (p.jitter != null && !p.loss) parts.push(`jitter: ${p.jitter}ms`);
+        if (p.loss || p.spike) {
+          if (p.gatewayLoss) parts.push('<span style="color:var(--red)">router: no reply</span>');
+          else if (p.gatewayMs != null) parts.push(`router: ${p.gatewayMs}ms`);
+          if (p.dnsLoss) parts.push('<span style="color:var(--red)">DNS: fail</span>');
+        }
+        if (p.roamed && p.bssid) parts.push(`AP: ${p.bssid.toUpperCase()}`);
+        if (aeTotal > 0) parts.push(`err rx:${ae.rxErrors} tx:${ae.txErrors} disc rx:${ae.rxDiscards} tx:${ae.txDiscards}`);
+        if (p.disconnectEvent) parts.push(`<span style="color:var(--amber)">evt: ${p.disconnectEvent.reason}</span>`);
+
+        const verdict = diagnose(p);
+        const diagLine = verdict
+          ? `<br><span style="color:var(--muted);font-size:10px;padding-left:2px">↳ ${verdict}</span>`
+          : '';
+        return `${timeFmt(p.ts)} ${tags.join(' ')} ${parts.join(' &middot; ')}${diagLine}`;
+      }).join('<br>');
+    }
+
+    // Health card
+    updateHealthCard(c, h);
+
+  } catch (e) {
+    document.getElementById('error').style.display = 'block';
+    document.getElementById('status').textContent = 'no data';
+    document.getElementById('status').className = '';
+  }
+}
+
+function diagnose(p) {
+  const ae = p.adapterErrors;
+  const aeTotal = ae ? (ae.rxErrors||0)+(ae.txErrors||0)+(ae.rxDiscards||0)+(ae.txDiscards||0) : 0;
+
+  if (p.loss) {
+    if (p.gatewayLoss)
+      return 'Your router was also unreachable. The problem is between your router and your ISP, or the router itself went down.';
+    if (p.roamed)
+      return 'Connection dropped during an access point switch. The handoff between access points did not complete cleanly.';
+    if (aeTotal > 0)
+      return 'Your Wi-Fi adapter reported errors during the drop. This points to a possible driver or hardware issue.';
+    if (p.rssi != null && p.rssi < -72)
+      return 'Signal was weak at the time of the drop. You may be too far from the router.';
+    return 'Your router was reachable but the internet was not. This is likely a temporary ISP or WAN issue.';
+  }
+
+  if (p.spike) {
+    const gwFast = !p.gatewayLoss && p.gatewayMs != null && p.gatewayMs < 20;
+    if (gwFast)
+      return 'Your router responded quickly but the internet was slow. Congestion is likely on the ISP side.';
+    if (p.jitter != null && p.jitter > 20)
+      return 'High latency with unstable jitter. This suggests local network congestion or wireless interference.';
+    return 'Brief latency spike. This is likely temporary network congestion.';
+  }
+
+  if (p.roamed)
+    return 'Your device switched to a different access point.';
+
+  if (aeTotal > 0)
+    return 'Your Wi-Fi adapter reported transmission errors. This may be caused by interference or a driver issue.';
+
+  return null;
+}
+
+function updateHealthCard(current, history) {
+  const card  = document.getElementById('health-card');
+  const val   = document.getElementById('health-val');
+  const delta = document.getElementById('health-detail');
+
+  function set(color, topColor, text, detail) {
+    card.style.borderTopColor = topColor;
+    val.style.color = color;
+    val.textContent = text;
+    delta.textContent = detail || '';
+    delta.className = 'card-delta';
+  }
+
+  if (!current) { set('var(--muted)', 'var(--muted)', '—', ''); return; }
+
+  // Active loss
+  if (current.loss) {
+    set('var(--red)', 'var(--red)', 'Connection lost', diagnose(current));
+    return;
+  }
+
+  // Active loss streak
+  if ((current.lossStreak || 0) > 0) {
+    set('var(--red)', 'var(--red)', 'Packet loss active', `${current.lossStreak} consecutive drops`);
+    return;
+  }
+
+  // Unstable jitter
+  if (current.jitter != null && current.jitter > 20) {
+    set('var(--amber)', 'var(--amber)', 'Unstable connection', `Jitter is ${current.jitter}ms. The connection is erratic.`);
+    return;
+  }
+
+  // Weak signal
+  if (current.rssi != null && current.rssi < -75) {
+    set('var(--amber)', 'var(--amber)', 'Weak signal', `RSSI is ${current.rssi}dBm. You may be too far from the router.`);
+    return;
+  }
+
+  // Elevated latency vs session average
+  if (current.ping != null && history.length > 10) {
+    const validPings = history.filter(p => !p.loss && p.ping != null).map(p => p.ping);
+    if (validPings.length > 5) {
+      const avg = validPings.reduce((s, v) => s + v, 0) / validPings.length;
+      if (current.ping > avg * 2.5 && current.ping > 100) {
+        set('var(--amber)', 'var(--amber)', 'Elevated latency', `Current ping is ${current.ping}ms vs session average of ${Math.round(avg)}ms.`);
+        return;
+      }
+    }
+  }
+
+  // Past issues — show most recent
+  const issues = history.filter(p => p.loss || p.spike || p.roamed ||
+    (p.adapterErrors && (p.adapterErrors.rxErrors||0)+(p.adapterErrors.txErrors||0)+
+     (p.adapterErrors.rxDiscards||0)+(p.adapterErrors.txDiscards||0) > 0));
+  if (issues.length > 0) {
+    const last = issues[issues.length - 1];
+    const minsAgo = Math.round((Date.now() / 1000 - last.ts) / 60);
+    const timeStr = minsAgo < 1 ? 'just now' : `${minsAgo}m ago`;
+    const verdict = diagnose(last);
+    set('var(--muted)', 'var(--border2)', `Last issue ${timeStr}`, verdict);
+    return;
+  }
+
+  // All clear
+  set('var(--green)', 'var(--green)', 'Everything looks good', 'No issues detected this session.');
+}
+
+function statLine(vals) {
+  if (!vals.length) return 'n/a';
+  const sorted = [...vals].sort((a, b) => a - b);
+  const avg = vals.reduce((s, v) => s + v, 0) / vals.length;
+  const pct = p => sorted[Math.min(Math.floor(p * sorted.length / 100), sorted.length - 1)];
+  return `avg=${avg.toFixed(1)} min=${sorted[0]} max=${sorted[sorted.length-1]} p5=${pct(5)} p95=${pct(95)}`;
+}
+
+function downloadReport() {
+  if (!lastData) { alert('No data yet — wait for the first poll.'); return; }
+  const { current: c, history: h, updated } = lastData;
+  const ts = new Date(updated * 1000).toISOString();
+  const span = h.length > 1 ? Math.round((h[h.length-1].ts - h[0].ts) / 60) + 'm' : '0m';
+
+  const pingVals = h.filter(p => !p.loss && p.ping != null).map(p => p.ping);
+  const lossCount = h.filter(p => p.loss).length;
+  const spikeCount = h.filter(p => p.spike).length;
+  const lossPct = h.length ? ((lossCount / h.length) * 100).toFixed(1) : '0.0';
+
+  const gwVals    = h.filter(p => !p.gatewayLoss && p.gatewayMs != null).map(p => p.gatewayMs);
+  const dnsVals   = h.filter(p => !p.dnsLoss && p.dnsMs != null).map(p => p.dnsMs);
+  const jitterVals = h.filter(p => p.jitter != null).map(p => p.jitter);
+  const gwLossCount   = h.filter(p => p.gatewayLoss).length;
+  const dnsLossCount  = h.filter(p => p.dnsLoss).length;
+  const roamCount     = h.filter(p => p.roamed).length;
+  const adapterErrTotal = h.reduce((s, p) => {
+    const ae = p.adapterErrors;
+    return s + (ae ? (ae.rxErrors||0)+(ae.txErrors||0)+(ae.rxDiscards||0)+(ae.txDiscards||0) : 0);
+  }, 0);
+  const disconnectEvents = h.filter(p => p.disconnectEvent).map(p =>
+    `  ${new Date(p.disconnectEvent.ts * 1000).toISOString()} ${p.disconnectEvent.reason}`
+  );
+  const bssidChanges = h.filter(p => p.roamed).map(p =>
+    `  ${new Date(p.ts * 1000).toISOString()} -> ${(p.bssid || '?').toUpperCase()}`
+  );
+
+  const lines = [
+    `WIFI_REPORT v3`,
+    `ts:${ts} ssid:${c.ssid} bssid:${c.bssid || '?'} band:${c.band} ch:${c.ch} radio:${c.radio}`,
+    `gateway:${c.gateway || 'unknown'} samples:${h.length} span:${span} spike_threshold:${lastData.spikeMs || 150}ms ping_target:${lastData.pingTarget || '8.8.8.8'}`,
+    ``,
+    `# stats (rx/tx in Mbps, rssi in dBm, sig in %, ping/gateway/dns/jitter in ms)`,
+    `rx         ${statLine(h.map(p => p.rx))}`,
+    `tx         ${statLine(h.map(p => p.tx))}`,
+    `rssi       ${statLine(h.map(p => p.rssi))}`,
+    `sig        ${statLine(h.map(p => p.sig))}`,
+    `ping       ${pingVals.length ? statLine(pingVals) : 'n/a'} spikes:${spikeCount} loss:${lossCount}(${lossPct}%)`,
+    `jitter     ${jitterVals.length ? statLine(jitterVals) : 'n/a'}`,
+    `gateway_ms ${gwVals.length ? statLine(gwVals) : 'n/a'} loss:${gwLossCount}`,
+    `dns_ms     ${dnsVals.length ? statLine(dnsVals) : 'n/a'} loss:${dnsLossCount}`,
+    `roams:${roamCount} adapter_errors_total:${adapterErrTotal}`,
+    ``,
+    `# current`,
+    `rx:${c.rx} tx:${c.tx} rssi:${c.rssi} sig:${c.sig} ping:${c.ping ?? 'loss'} jitter:${c.jitter ?? '?'} gw:${c.gatewayMs ?? 'loss'} dns:${c.dnsMs ?? 'loss'} streak:${c.lossStreak}`,
+    ``,
+    bssidChanges.length ? `# ap roam events\n${bssidChanges.join('\n')}\n` : `# no ap roams`,
+    disconnectEvents.length ? `# windows disconnect events\n${disconnectEvents.join('\n')}\n` : `# no windows disconnect events captured`,
+    ``,
+    `# history ts,rx,tx,rssi,sig,ping,pingMin,pingMax,jitter,spike,loss,gatewayMs,gatewayLoss,dnsMs,dnsLoss,lossStreak,bssid,roamed,adapterErrTotal`,
+    ...h.map(p => {
+      const ae = p.adapterErrors;
+      const aeT = ae ? (ae.rxErrors||0)+(ae.txErrors||0)+(ae.rxDiscards||0)+(ae.txDiscards||0) : 0;
+      return [
+        p.ts, p.rx, p.tx, p.rssi, p.sig,
+        p.ping ?? '', p.pingMin ?? '', p.pingMax ?? '', p.jitter ?? '',
+        p.spike ? 1 : 0, p.loss ? 1 : 0,
+        p.gatewayMs ?? '', p.gatewayLoss ? 1 : 0,
+        p.dnsMs ?? '', p.dnsLoss ? 1 : 0,
+        p.lossStreak ?? 0, p.bssid || '', p.roamed ? 1 : 0, aeT
+      ].join(',');
+    })
+  ];
+
+  const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `wifi-report-${ts.slice(0,19).replace(/:/g,'-')}.txt`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function updateChartTheme() {
+  const tick = cssVar('--muted');
+  const grid = cssVar('--border');
+  [rateChart, pingChart, sigChart].forEach(chart => {
+    Object.values(chart.options.scales).forEach(scale => {
+      if (scale.ticks)                     scale.ticks.color = tick;
+      if (scale.grid?.color !== undefined) scale.grid.color  = grid;
+      if (scale.title)                     scale.title.color = tick;
+    });
+    chart.update('none');
+  });
+}
+
+// ── Theme picker ────────────────────────────────────────────────
+const THEMES = [
+  { id: 'midnight',   name: 'Midnight',   bg: '#0d0f12', surface: '#13161b', accent: '#3b82f6' },
+  { id: 'dusk',       name: 'Dusk',       bg: '#171e2d', surface: '#1e2740', accent: '#3bb8c8' },
+  { id: 'ember',      name: 'Ember',      bg: '#140e0b', surface: '#1e1511', accent: '#e07548' },
+  { id: 'daylight',   name: 'Daylight',   bg: '#f0f2f6', surface: '#ffffff', accent: '#3b82f6' },
+  { id: 'arctic',     name: 'Arctic',     bg: '#e0eff8', surface: '#f2f9fc', accent: '#1a8fb0' },
+  { id: 'sakura',     name: 'Sakura',     bg: '#fdf0f4', surface: '#ffffff', accent: '#c83868' },
+  { id: 'lavender',   name: 'Lavender',   bg: '#f2eef8', surface: '#faf8ff', accent: '#7048c8' },
+  { id: 'terracotta', name: 'Terracotta', bg: '#fdf4ee', surface: '#fffaf6', accent: '#2ab098' },
+];
+
+function buildThemePicker() {
+  document.getElementById('theme-menu').innerHTML = THEMES.map(t => `
+    <div class="theme-swatch" id="swatch-${t.id}" onclick="setTheme('${t.id}')">
+      <div class="swatch-preview">
+        <div class="swatch-bg"     style="background:${t.bg}"></div>
+        <div class="swatch-bottom">
+          <div class="swatch-surface" style="background:${t.surface}"></div>
+          <div class="swatch-accent"  style="background:${t.accent}"></div>
+        </div>
+      </div>
+      <div class="swatch-label">${t.name}</div>
+    </div>`).join('');
+}
+
+function setTheme(id) {
+  document.documentElement.setAttribute('data-theme', id);
+  localStorage.setItem('wfm-theme', id);
+  document.querySelectorAll('.theme-swatch').forEach(el => el.classList.remove('active'));
+  const s = document.getElementById('swatch-' + id);
+  if (s) s.classList.add('active');
+  document.getElementById('theme-menu').classList.remove('open');
+  updateChartTheme();
+}
+
+function toggleThemePicker(e) {
+  e.stopPropagation();
+  document.getElementById('theme-menu').classList.toggle('open');
+}
+
+document.addEventListener('click', () => {
+  document.getElementById('theme-menu').classList.remove('open');
+});
+
+buildThemePicker();
+setTheme(localStorage.getItem('wfm-theme') || 'midnight');
+
+poll();
+setInterval(poll, 2000);
+setInterval(() => fetch('/heartbeat').catch(() => {}), 5000);
+</script>
+</body>
+</html>
