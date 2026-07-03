@@ -309,7 +309,8 @@
     font-size: 12px;
     color: var(--muted);
     white-space: nowrap;
-    min-width: 110px;
+    width: 175px;
+    flex-shrink: 0;
     text-align: right;
   }
   .timeline-live { color: var(--green); }
@@ -348,6 +349,31 @@
   }
 
   canvas { display: block; }
+
+  .chart-cursor {
+    position: absolute;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 5;
+    top: 0; left: 0;
+    will-change: transform;
+    opacity: 0;
+    transition: opacity 0.4s;
+  }
+  .chart-cursor.active { opacity: 1; }
+  .chart-cursor.active::after {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    border-radius: 50%;
+    border: 1.5px solid currentColor;
+    animation: cursor-ring 2s ease-out infinite;
+  }
+  @keyframes cursor-ring {
+    0%   { opacity: 0.8; transform: scale(0.5); }
+    100% { opacity: 0;   transform: scale(2.8); }
+  }
 
   #error {
     display: none;
@@ -532,7 +558,7 @@
         <div class="legend-item"><div class="legend-dot" style="background:var(--tx)"></div>Upload link</div>
       </div>
     </div>
-    <div style="position:relative;height:200px"><canvas id="rateChart"></canvas></div>
+    <div style="position:relative;height:200px"><canvas id="rateChart"></canvas><div class="chart-cursor" id="rateCursor" style="background:var(--rx);color:var(--rx);box-shadow:0 0 8px 3px rgba(59,130,246,0.55)"></div></div>
     <div class="timeline-wrap">
       <input type="range" class="timeline-input" data-chart="rate" min="0" max="0" value="0" step="1">
       <div class="timeline-label timeline-live">● Live</div>
@@ -546,7 +572,7 @@
         <div class="legend-item"><div class="legend-dot" style="background:var(--sig)"></div>Signal %</div>
       </div>
     </div>
-    <div style="position:relative;height:180px"><canvas id="sigChart"></canvas></div>
+    <div style="position:relative;height:180px"><canvas id="sigChart"></canvas><div class="chart-cursor" id="sigCursor" style="background:var(--rssi);color:var(--rssi);box-shadow:0 0 8px 3px rgba(245,158,11,0.55)"></div></div>
     <div class="timeline-wrap">
       <input type="range" class="timeline-input" data-chart="sig" min="0" max="0" value="0" step="1">
       <div class="timeline-label timeline-live">● Live</div>
@@ -563,7 +589,7 @@
         <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div>Loss</div>
       </div>
     </div>
-    <div style="position:relative;height:180px"><canvas id="pingChart"></canvas></div>
+    <div style="position:relative;height:180px"><canvas id="pingChart"></canvas><div class="chart-cursor" id="pingCursor" style="background:var(--ping);color:var(--ping);box-shadow:0 0 8px 3px rgba(251,146,60,0.55)"></div></div>
     <div class="timeline-wrap">
       <input type="range" class="timeline-input" data-chart="ping" min="0" max="0" value="0" step="1">
       <div class="timeline-label timeline-live">● Live</div>
@@ -583,11 +609,26 @@
 <script>
 function cssVar(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
 
+const TICK_STEP_SEC = 30; // x-axis label interval
+
 function makeScales(extra) {
   const tick = cssVar('--muted');
   const grid = cssVar('--border');
   const base = {
-    x: { ticks: { color: tick, font: { family: "'IBM Plex Mono'", size: 12 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 12 }, grid: { color: grid } },
+    x: {
+      type: 'linear',
+      // Replace Chart.js default ticks (which adds a boundary tick that sticks
+      // at the left edge) with our own aligned 30s intervals.  No autoSkip means
+      // no blink when a tick approaches the boundary.
+      afterBuildTicks(axis) {
+        const first = Math.ceil(axis.min / TICK_STEP_SEC) * TICK_STEP_SEC;
+        const ticks = [];
+        for (let v = first; v <= axis.max; v += TICK_STEP_SEC) ticks.push({ value: v });
+        axis.ticks = ticks;
+      },
+      ticks: { color: tick, font: { family: "'IBM Plex Mono'", size: 12 }, maxRotation: 0, callback: v => timeFmt(v) },
+      grid: { color: grid }
+    },
     y: { ticks: { color: tick, font: { family: "'IBM Plex Mono'", size: 12 } }, grid: { color: grid } }
   };
   return extra ? { ...base, ...extra } : base;
@@ -596,44 +637,50 @@ function makeScales(extra) {
 const cfg = {
   responsive: true,
   maintainAspectRatio: false,
-  animation: { duration: 400 },
-  plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
+  animation: false,
+  plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false, callbacks: { title: items => items.length ? timeFmt(items[0].parsed.x) : '' } } },
   scales: makeScales()
 };
 
+// Fixed y-axis pixel width so all three charts' plot areas share identical
+// left and right edges regardless of tick-label length differences.
+const Y_AXIS_W = 52;
+const yFit = s => { s.width = Y_AXIS_W; };
+
 const rateChart = new Chart(document.getElementById('rateChart'), {
   type: 'line',
-  data: { labels: [], datasets: [
-    { label: 'Download link rate', data: [], borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.06)', tension: 0.3, pointRadius: 2, borderWidth: 1.5, fill: true },
-    { label: 'Upload link rate',   data: [], borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.06)', tension: 0.3, pointRadius: 2, borderDash: [4,3], borderWidth: 1.5, fill: true }
+  data: { datasets: [
+    { label: 'Download link rate', data: [], borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.06)', tension: 0.3, pointRadius: 0, borderWidth: 1.5, fill: true },
+    { label: 'Upload link rate',   data: [], borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.06)', tension: 0.3, pointRadius: 0, borderDash: [4,3], borderWidth: 1.5, fill: true }
   ]},
-  options: { ...cfg, scales: makeScales({ y: { ticks: { color: cssVar('--muted'), font: { family: "'IBM Plex Mono'", size: 12 } }, grid: { color: cssVar('--border') }, beginAtZero: false, title: { display: true, text: 'Mbps', color: cssVar('--muted'), font: { size: 12 } } } }) }
+  options: { ...cfg, layout: { padding: { right: Y_AXIS_W } }, scales: makeScales({ y: { afterFit: yFit, ticks: { color: cssVar('--muted'), font: { family: "'IBM Plex Mono'", size: 12 } }, grid: { color: cssVar('--border') }, beginAtZero: false, title: { display: true, text: 'Mbps', color: cssVar('--muted'), font: { size: 12 } } } }) }
 });
 
 const pingChart = new Chart(document.getElementById('pingChart'), {
   type: 'line',
-  data: { labels: [], datasets: [
+  data: { datasets: [
     { label: 'Ping avg', data: [], borderColor: '#fb923c', backgroundColor: 'rgba(251,146,60,0.06)', tension: 0.3, pointRadius: 0, borderWidth: 1.5, fill: true },
     { label: 'Jitter',   data: [], borderColor: '#ec4899', backgroundColor: 'transparent', tension: 0.3, pointRadius: 0, borderWidth: 1, borderDash: [3,3] },
   ]},
   options: {
     ...cfg,
+    layout: { padding: { right: Y_AXIS_W } },
     spanGaps: false,
-    scales: makeScales({ y: { ticks: { color: cssVar('--muted'), font: { family: "'IBM Plex Mono'", size: 12 } }, grid: { color: cssVar('--border') }, beginAtZero: true, title: { display: true, text: 'ms', color: cssVar('--muted'), font: { size: 12 } } } })
+    scales: makeScales({ y: { afterFit: yFit, ticks: { color: cssVar('--muted'), font: { family: "'IBM Plex Mono'", size: 12 } }, grid: { color: cssVar('--border') }, beginAtZero: true, title: { display: true, text: 'ms', color: cssVar('--muted'), font: { size: 12 } } } })
   }
 });
 
 const sigChart = new Chart(document.getElementById('sigChart'), {
   type: 'line',
-  data: { labels: [], datasets: [
-    { label: 'RSSI', data: [], borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.06)', tension: 0.3, pointRadius: 2, borderWidth: 1.5, fill: true, yAxisID: 'y' },
-    { label: 'Signal %', data: [], borderColor: '#a78bfa', backgroundColor: 'rgba(167,139,250,0.06)', tension: 0.3, pointRadius: 2, borderDash: [4,3], borderWidth: 1.5, fill: true, yAxisID: 'y2' }
+  data: { datasets: [
+    { label: 'RSSI', data: [], borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.06)', tension: 0.3, pointRadius: 0, borderWidth: 1.5, fill: true, yAxisID: 'y' },
+    { label: 'Signal %', data: [], borderColor: '#a78bfa', backgroundColor: 'rgba(167,139,250,0.06)', tension: 0.3, pointRadius: 0, borderDash: [4,3], borderWidth: 1.5, fill: true, yAxisID: 'y2' }
   ]},
   options: {
     ...cfg,
     scales: makeScales({
-      y:  { ticks: { color: cssVar('--muted'), font: { family: "'IBM Plex Mono'", size: 12 } }, grid: { color: cssVar('--border') }, position: 'left',  title: { display: true, text: 'dBm', color: cssVar('--muted'), font: { size: 12 } } },
-      y2: { ticks: { color: cssVar('--muted'), font: { family: "'IBM Plex Mono'", size: 12 } }, grid: { drawOnChartArea: false },          position: 'right', min: 0, max: 100, title: { display: true, text: '%',   color: cssVar('--muted'), font: { size: 12 } } }
+      y:  { afterFit: yFit, ticks: { color: cssVar('--muted'), font: { family: "'IBM Plex Mono'", size: 12 } }, grid: { color: cssVar('--border') }, position: 'left',  title: { display: true, text: 'dBm', color: cssVar('--muted'), font: { size: 12 } } },
+      y2: { afterFit: yFit, ticks: { color: cssVar('--muted'), font: { family: "'IBM Plex Mono'", size: 12 } }, grid: { drawOnChartArea: false },          position: 'right', min: 0, max: 100, title: { display: true, text: '%',   color: cssVar('--muted'), font: { size: 12 } } }
     })
   }
 });
@@ -642,8 +689,14 @@ let lastTs = null;
 let prev = null;
 let lastData = null;
 let lastHistory = [];
+// Monotonic live display clock — advanced by rAF frame deltas, never reset.
+// Avoids freezes from poll jitter: can coast up to POLL_INTERVAL_SEC past the
+// latest data point (flat-line extrapolation) instead of stalling at the cap.
+let liveDisplayTs = null;
+let lastRafMs     = 0;
 
-const VIEWPORT = 60; // data points visible at once (~2 min of history)
+const VIEWPORT  = 60; // data points visible at once (~2 min of history)
+const TRAIL_PAD = 4;  // empty slots kept at the right edge during live view
 
 // Sticky Y-axis bounds: grow with data, never shrink
 const globalBounds = { rateMin: null, rateMax: null, pingMax: null, rssiMin: null, rssiMax: null };
@@ -669,34 +722,51 @@ function updateGlobalBounds(h) {
   }
 }
 
-// Per-chart view offsets; -1 = live
-// Lookback offsets: 0 = live, positive = how many points back from the end.
-// Storing as lookback rather than absolute index keeps the scrubber thumb
-// visually stable as new data arrives and maxStart grows.
-const viewStarts = { rate: 0, sig: 0, ping: 0 };
+// Per-chart view state: null = live (always shows tail), number = pinned absolute
+// end index into history so the window stays frozen when scrubbing the past.
+const viewStarts = { rate: null, sig: null, ping: null };
 
-function getSlice(h, lookback) {
-  if (lookback === 0) return h.slice(Math.max(0, h.length - VIEWPORT));
-  const end = Math.max(VIEWPORT, h.length - lookback);
-  return h.slice(Math.max(0, end - VIEWPORT), end);
+// Tracks the last history cutoff index rendered per chart.
+// rAF rebuilds base data arrays only when this changes (≈ once per poll),
+// not every frame.
+const rafState = {
+  rate: { cutoff: -1 },
+  sig:  { cutoff: -1 },
+  ping: { cutoff: -1 },
+};
+
+// Pre-allocated data arrays for live charts.  Each array holds all data points
+// inside the current display window followed by ONE mutable phantom slot.
+// rAF updates phantom.x/y every frame; base data is rebuilt only when the
+// display window crosses a data-point boundary.
+const liveExt = {
+  rate: { d0: [], d1: [], ph0: null, ph1: null },
+  sig:  { d0: [], d1: [], ph0: null, ph1: null },
+  ping: { d0: [], d1: [], ph0: null, ph1: null, radii: [], colors: [] },
+};
+
+function getSlice(h, endIndex) {
+  if (endIndex === null) return h.slice(Math.max(0, h.length - VIEWPORT));
+  return h.slice(Math.max(0, endIndex - VIEWPORT), endIndex);
 }
 
 function syncScrubber(key, h) {
   const tl  = document.querySelector(`.timeline-input[data-chart="${key}"]`);
   const lbl = tl ? tl.nextElementSibling : null;
   if (!tl) return;
-  const lookback = viewStarts[key];
-  const maxStart = Math.max(0, h.length - VIEWPORT);
-  // Keep max >= 1 so the browser renders the thumb at the right end.
-  // Disable the slider until there is actually history to scroll through.
-  tl.max      = Math.max(1, maxStart);
-  tl.value    = maxStart === 0 ? 1 : (maxStart - lookback);
-  tl.disabled = maxStart === 0;
-  if (lookback === 0) {
+  const endIndex = viewStarts[key];
+  const isLive   = endIndex === null;
+  // Slider range: VIEWPORT (earliest usable window) … h.length (live end).
+  // value === h.length means "live"; anything less is a pinned past position.
+  tl.min      = Math.max(1, Math.min(VIEWPORT, h.length - 1));
+  tl.max      = h.length;
+  tl.value    = isLive ? h.length : endIndex;
+  tl.disabled = h.length <= 1;
+  if (isLive) {
     lbl.textContent = '● Live';
     lbl.className   = 'timeline-label timeline-live';
   } else {
-    const slice = getSlice(h, lookback);
+    const slice = getSlice(h, endIndex);
     const from  = slice.length ? timeFmt(slice[0].ts) : '—';
     const to    = slice.length ? timeFmt(slice[slice.length - 1].ts) : '—';
     lbl.textContent = from + ' → ' + to;
@@ -704,71 +774,284 @@ function syncScrubber(key, h) {
   }
 }
 
-function renderRate(h) {
-  const slice  = getSlice(h, viewStarts.rate);
-  rateChart.data.labels = slice.map(p => timeFmt(p.ts));
-  rateChart.data.datasets[0].data = slice.map(p => p.rx);
-  rateChart.data.datasets[1].data = slice.map(p => p.tx);
+const POLL_INTERVAL_SEC = 2;
+// Display lag: render data this many seconds behind wall time.  Setting this
+// equal to POLL_INTERVAL_SEC guarantees that both endpoints of every
+// interpolated segment are already in memory before the animation needs them,
+// eliminating flat-line pauses and slope discontinuities on poll boundaries.
+const DISPLAY_LAG_SEC = POLL_INTERVAL_SEC;
+
+// X window: always VIEWPORT+TRAIL_PAD slots wide, ending TRAIL_PAD slots past the last data point.
+function setXWindow(chart, endTs) {
+  chart.options.scales.x.max = endTs + TRAIL_PAD * POLL_INTERVAL_SEC;
+  chart.options.scales.x.min = chart.options.scales.x.max - (VIEWPORT + TRAIL_PAD) * POLL_INTERVAL_SEC;
+}
+
+function renderRate(h, isLive) {
+  const slice = getSlice(h, viewStarts.rate);
   if (globalBounds.rateMax != null) {
     const range = globalBounds.rateMax - globalBounds.rateMin;
     const pad   = (range || globalBounds.rateMax) * 0.1;
     rateChart.options.scales.y.min = Math.floor(globalBounds.rateMin - pad);
     rateChart.options.scales.y.max = Math.ceil(globalBounds.rateMax  + pad);
   }
-  rateChart.update('none');
+  if (isLive) {
+    const displayTs = liveDisplayTs ?? (h[h.length - 1].ts - DISPLAY_LAG_SEC);
+    let lo = h.length - 1;
+    while (lo > 0 && h[lo].ts > displayTs) lo--;
+    const ex = liveExt.rate;
+    if (!ex.ph0) { ex.ph0 = { x: displayTs, y: null }; ex.ph1 = { x: displayTs, y: null }; }
+    const base = h.slice(Math.max(0, lo - VIEWPORT + 1), lo + 1);
+    ex.d0 = base.map(p => ({ x: p.ts, y: p.rx ?? null })); ex.d0.push(ex.ph0);
+    ex.d1 = base.map(p => ({ x: p.ts, y: p.tx ?? null })); ex.d1.push(ex.ph1);
+    rateChart.data.datasets[0].data = ex.d0;
+    rateChart.data.datasets[1].data = ex.d1;
+    rafState.rate.cutoff = lo;
+  } else {
+    rateChart.data.datasets[0].data = slice.map(p => ({ x: p.ts, y: p.rx ?? null }));
+    rateChart.data.datasets[1].data = slice.map(p => ({ x: p.ts, y: p.tx ?? null }));
+    const endTs = slice.length ? slice[slice.length - 1].ts : Date.now() / 1000;
+    setXWindow(rateChart, endTs);
+    rateChart.update('none');
+  }
   syncScrubber('rate', h);
 }
 
-function renderSig(h) {
-  const slice  = getSlice(h, viewStarts.sig);
-  sigChart.data.labels = slice.map(p => timeFmt(p.ts));
-  sigChart.data.datasets[0].data = slice.map(p => p.rssi);
-  sigChart.data.datasets[1].data = slice.map(p => p.sig);
+function renderSig(h, isLive) {
+  const slice = getSlice(h, viewStarts.sig);
   if (globalBounds.rssiMin != null) {
     const pad = Math.abs(globalBounds.rssiMax - globalBounds.rssiMin) * 0.1 || 2;
     sigChart.options.scales.y.min = Math.floor(globalBounds.rssiMin - pad);
     sigChart.options.scales.y.max = Math.ceil(globalBounds.rssiMax  + pad);
   }
-  sigChart.update('none');
+  if (isLive) {
+    const displayTs = liveDisplayTs ?? (h[h.length - 1].ts - DISPLAY_LAG_SEC);
+    let lo = h.length - 1;
+    while (lo > 0 && h[lo].ts > displayTs) lo--;
+    const ex = liveExt.sig;
+    if (!ex.ph0) { ex.ph0 = { x: displayTs, y: null }; ex.ph1 = { x: displayTs, y: null }; }
+    const base = h.slice(Math.max(0, lo - VIEWPORT + 1), lo + 1);
+    ex.d0 = base.map(p => ({ x: p.ts, y: p.rssi ?? null })); ex.d0.push(ex.ph0);
+    ex.d1 = base.map(p => ({ x: p.ts, y: p.sig  ?? null })); ex.d1.push(ex.ph1);
+    sigChart.data.datasets[0].data = ex.d0;
+    sigChart.data.datasets[1].data = ex.d1;
+    rafState.sig.cutoff = lo;
+  } else {
+    sigChart.data.datasets[0].data = slice.map(p => ({ x: p.ts, y: p.rssi ?? null }));
+    sigChart.data.datasets[1].data = slice.map(p => ({ x: p.ts, y: p.sig  ?? null }));
+    const endTs = slice.length ? slice[slice.length - 1].ts : Date.now() / 1000;
+    setXWindow(sigChart, endTs);
+    sigChart.update('none');
+  }
   syncScrubber('sig', h);
 }
 
-function renderPing(h) {
-  const slice  = getSlice(h, viewStarts.ping);
-  pingChart.data.labels = slice.map(p => timeFmt(p.ts));
-  pingChart.data.datasets[0].data = slice.map(p => p.loss ? null : p.ping);
-  pingChart.data.datasets[0].pointRadius = slice.map(p => (p.spike || p.loss || p.roamed) ? 4 : 0);
-  pingChart.data.datasets[0].pointBackgroundColor = slice.map(p =>
-    p.loss ? '#ef4444' : p.roamed ? '#94a3b8' : p.spike ? '#f59e0b' : '#fb923c');
-  pingChart.data.datasets[1].data = slice.map(p => p.loss ? null : p.jitter);
+function renderPing(h, isLive) {
+  const slice = getSlice(h, viewStarts.ping);
   if (globalBounds.pingMax != null) {
-    const pad = globalBounds.pingMax * 0.15;
-    pingChart.options.scales.y.max = Math.ceil(globalBounds.pingMax + pad);
+    pingChart.options.scales.y.max = Math.ceil(globalBounds.pingMax * 1.15);
   }
-  pingChart.update('none');
+  if (isLive) {
+    const displayTs = liveDisplayTs ?? (h[h.length - 1].ts - DISPLAY_LAG_SEC);
+    let lo = h.length - 1;
+    while (lo > 0 && h[lo].ts > displayTs) lo--;
+    const ex = liveExt.ping;
+    if (!ex.ph0) { ex.ph0 = { x: displayTs, y: null }; ex.ph1 = { x: displayTs, y: null }; }
+    const base = h.slice(Math.max(0, lo - VIEWPORT + 1), lo + 1);
+    ex.d0  = base.map(p => ({ x: p.ts, y: p.loss ? null : (p.ping   ?? null) })); ex.d0.push(ex.ph0);
+    ex.d1  = base.map(p => ({ x: p.ts, y: p.loss ? null : (p.jitter ?? null) })); ex.d1.push(ex.ph1);
+    ex.radii  = base.map(p => (p.spike || p.loss || p.roamed) ? 4 : 0); ex.radii.push(0);
+    ex.colors = base.map(p => p.loss ? '#ef4444' : p.roamed ? '#94a3b8' : p.spike ? '#f59e0b' : '#fb923c');
+    ex.colors.push('#fb923c');
+    pingChart.data.datasets[0].data               = ex.d0;
+    pingChart.data.datasets[0].pointRadius         = ex.radii;
+    pingChart.data.datasets[0].pointBackgroundColor = ex.colors;
+    pingChart.data.datasets[1].data               = ex.d1;
+    rafState.ping.cutoff = lo;
+  } else {
+    pingChart.data.datasets[0].data = slice.map(p => ({ x: p.ts, y: p.loss ? null : (p.ping ?? null) }));
+    pingChart.data.datasets[0].pointRadius = slice.map(p => (p.spike || p.loss || p.roamed) ? 4 : 0);
+    pingChart.data.datasets[0].pointBackgroundColor = slice.map(p =>
+      p.loss ? '#ef4444' : p.roamed ? '#94a3b8' : p.spike ? '#f59e0b' : '#fb923c');
+    pingChart.data.datasets[1].data = slice.map(p => ({ x: p.ts, y: p.loss ? null : (p.jitter ?? null) }));
+    const endTs = slice.length ? slice[slice.length - 1].ts : Date.now() / 1000;
+    setXWindow(pingChart, endTs);
+    pingChart.update('none');
+  }
   syncScrubber('ping', h);
 }
 
-function renderCharts(h) {
+function renderCharts(h, animate) {
   updateGlobalBounds(h);
-  renderRate(h);
-  renderSig(h);
-  renderPing(h);
+  renderRate(h, animate);
+  renderSig(h,  animate);
+  renderPing(h, animate);
 }
+
+// Place the cursor dot at the exact tip of the live line.
+function placeCursor(cursorEl, chart, ts, val, yScale) {
+  if (!cursorEl || !chart.scales?.x || !chart.scales?.[yScale]) return;
+  const x = chart.scales.x.getPixelForValue(ts);
+  const y = chart.scales[yScale].getPixelForValue(val);
+  if (!isFinite(x) || !isFinite(y)) return;
+  cursorEl.classList.add('active');
+  cursorEl.style.transform = `translate(calc(${x}px - 50%), calc(${y}px - 50%))`;
+}
+
+const rateCursor = document.getElementById('rateCursor');
+const sigCursor  = document.getElementById('sigCursor');
+const pingCursor = document.getElementById('pingCursor');
 
 document.querySelectorAll('.timeline-input').forEach(tl => {
   tl.addEventListener('input', e => {
-    const key      = e.target.dataset.chart;
-    const maxStart = parseInt(e.target.max) || 0;
-    const val      = parseInt(e.target.value);
-    // Convert slider position (right=live) to lookback offset
-    viewStarts[key] = Math.max(0, maxStart - val);
+    const key    = e.target.dataset.chart;
+    const val    = parseInt(e.target.value);
+    const maxEnd = parseInt(e.target.max);
+    // Slider at max → live; anything less → pinned past view (absolute endIndex).
+    const isLive = val >= maxEnd;
+    viewStarts[key] = isLive ? null : val;
+    // Re-anchor the monotonic clock when returning to live so it doesn't start
+    // from a stale position if the chart was in past mode for a while.
+    if (isLive) liveDisplayTs = null;
     if (lastHistory.length === 0) return;
-    if (key === 'rate') renderRate(lastHistory);
-    else if (key === 'sig')  renderSig(lastHistory);
-    else if (key === 'ping') renderPing(lastHistory);
+    if (key === 'rate') {
+      renderRate(lastHistory, isLive);
+      if (!isLive) rateCursor.classList.remove('active');
+    } else if (key === 'sig') {
+      renderSig(lastHistory, isLive);
+      if (!isLive) sigCursor.classList.remove('active');
+    } else if (key === 'ping') {
+      renderPing(lastHistory, isLive);
+      if (!isLive) pingCursor.classList.remove('active');
+    }
   });
 });
+
+// Linear interpolation; returns null if both endpoints are null.
+function lerpVal(a, b, t) {
+  if (a == null || b == null) return b ?? a ?? null;
+  return a + (b - a) * t;
+}
+
+// Find the index of the last history point whose timestamp is ≤ displayTs.
+// Always returns a valid index (minimum 0).
+function findLiveCutoff(h, displayTs) {
+  let lo = h.length - 1;
+  while (lo > 0 && h[lo].ts > displayTs) lo--;
+  return lo;
+}
+
+// rAF loop: drives the monotonic live display clock and interpolates the
+// phantom tip every frame.  liveDisplayTs advances by real frame deltas —
+// it never resets on poll boundaries, so there are no freeze artefacts from
+// poll jitter.  It may coast up to POLL_INTERVAL_SEC past the latest data
+// (flat-line extrapolation) if a poll is late, then resumes normally.
+function rafLoop() {
+  requestAnimationFrame(rafLoop);
+  if (!lastHistory.length) return;
+  const h = lastHistory;
+
+  // Advance monotonic clock by the real elapsed time since the last frame.
+  const nowMs  = performance.now();
+  const deltaS = lastRafMs ? Math.min((nowMs - lastRafMs) / 1000, 0.1) : 0;
+  lastRafMs = nowMs;
+  const maxTs = h[h.length - 1].ts;
+  if (liveDisplayTs === null) liveDisplayTs = maxTs - DISPLAY_LAG_SEC;
+  // Allow up to one poll interval of coasting past the latest data point so a
+  // late poll doesn't freeze the cursor — the phantom just holds its last value.
+  liveDisplayTs = Math.min(liveDisplayTs + deltaS, maxTs + POLL_INTERVAL_SEC);
+  const displayTs = liveDisplayTs;
+
+  if (viewStarts.rate === null) {
+    const ex = liveExt.rate;
+    if (ex.ph0) {
+      const lo     = findLiveCutoff(h, displayTs);
+      const fromPt = h[lo];
+      const toPt   = h[lo + 1];
+      const t = (toPt && toPt.ts > fromPt.ts)
+        ? Math.max(0, Math.min(1, (displayTs - fromPt.ts) / (toPt.ts - fromPt.ts)))
+        : 1;
+      if (lo !== rafState.rate.cutoff) {
+        rafState.rate.cutoff = lo;
+        const base = h.slice(Math.max(0, lo - VIEWPORT + 1), lo + 1);
+        ex.d0 = base.map(p => ({ x: p.ts, y: p.rx ?? null })); ex.d0.push(ex.ph0);
+        ex.d1 = base.map(p => ({ x: p.ts, y: p.tx ?? null })); ex.d1.push(ex.ph1);
+        rateChart.data.datasets[0].data = ex.d0;
+        rateChart.data.datasets[1].data = ex.d1;
+      }
+      ex.ph0.x = ex.ph1.x = displayTs;
+      ex.ph0.y = lerpVal(fromPt?.rx ?? null, toPt?.rx ?? null, t);
+      ex.ph1.y = lerpVal(fromPt?.tx ?? null, toPt?.tx ?? null, t);
+      rateChart.options.scales.x.max = displayTs + TRAIL_PAD * POLL_INTERVAL_SEC;
+      rateChart.options.scales.x.min = rateChart.options.scales.x.max - (VIEWPORT + TRAIL_PAD) * POLL_INTERVAL_SEC;
+      rateChart.update('none');
+      if (ex.ph0.y != null) placeCursor(rateCursor, rateChart, displayTs, ex.ph0.y, 'y');
+    }
+  }
+
+  if (viewStarts.sig === null) {
+    const ex = liveExt.sig;
+    if (ex.ph0) {
+      const lo     = findLiveCutoff(h, displayTs);
+      const fromPt = h[lo];
+      const toPt   = h[lo + 1];
+      const t = (toPt && toPt.ts > fromPt.ts)
+        ? Math.max(0, Math.min(1, (displayTs - fromPt.ts) / (toPt.ts - fromPt.ts)))
+        : 1;
+      if (lo !== rafState.sig.cutoff) {
+        rafState.sig.cutoff = lo;
+        const base = h.slice(Math.max(0, lo - VIEWPORT + 1), lo + 1);
+        ex.d0 = base.map(p => ({ x: p.ts, y: p.rssi ?? null })); ex.d0.push(ex.ph0);
+        ex.d1 = base.map(p => ({ x: p.ts, y: p.sig  ?? null })); ex.d1.push(ex.ph1);
+        sigChart.data.datasets[0].data = ex.d0;
+        sigChart.data.datasets[1].data = ex.d1;
+      }
+      ex.ph0.x = ex.ph1.x = displayTs;
+      ex.ph0.y = lerpVal(fromPt?.rssi ?? null, toPt?.rssi ?? null, t);
+      ex.ph1.y = lerpVal(fromPt?.sig  ?? null, toPt?.sig  ?? null, t);
+      sigChart.options.scales.x.max = displayTs + TRAIL_PAD * POLL_INTERVAL_SEC;
+      sigChart.options.scales.x.min = sigChart.options.scales.x.max - (VIEWPORT + TRAIL_PAD) * POLL_INTERVAL_SEC;
+      sigChart.update('none');
+      if (ex.ph0.y != null) placeCursor(sigCursor, sigChart, displayTs, ex.ph0.y, 'y');
+    }
+  }
+
+  if (viewStarts.ping === null) {
+    const ex = liveExt.ping;
+    if (ex.ph0) {
+      const lo     = findLiveCutoff(h, displayTs);
+      const fromPt = h[lo];
+      const toPt   = h[lo + 1];
+      const t = (toPt && toPt.ts > fromPt.ts)
+        ? Math.max(0, Math.min(1, (displayTs - fromPt.ts) / (toPt.ts - fromPt.ts)))
+        : 1;
+      if (lo !== rafState.ping.cutoff) {
+        rafState.ping.cutoff = lo;
+        const base = h.slice(Math.max(0, lo - VIEWPORT + 1), lo + 1);
+        ex.d0 = base.map(p => ({ x: p.ts, y: p.loss ? null : (p.ping   ?? null) })); ex.d0.push(ex.ph0);
+        ex.d1 = base.map(p => ({ x: p.ts, y: p.loss ? null : (p.jitter ?? null) })); ex.d1.push(ex.ph1);
+        ex.radii  = base.map(p => (p.spike || p.loss || p.roamed) ? 4 : 0); ex.radii.push(0);
+        ex.colors = base.map(p => p.loss ? '#ef4444' : p.roamed ? '#94a3b8' : p.spike ? '#f59e0b' : '#fb923c');
+        ex.colors.push('#fb923c');
+        pingChart.data.datasets[0].data               = ex.d0;
+        pingChart.data.datasets[0].pointRadius         = ex.radii;
+        pingChart.data.datasets[0].pointBackgroundColor = ex.colors;
+        pingChart.data.datasets[1].data               = ex.d1;
+      }
+      ex.ph0.x = ex.ph1.x = displayTs;
+      const noPing    = !fromPt || fromPt.loss;
+      const noNxtPing = !toPt   || toPt.loss;
+      ex.ph0.y = noPing ? null : lerpVal(fromPt.ping   ?? null, noNxtPing ? null : (toPt.ping   ?? null), t);
+      ex.ph1.y = noPing ? null : lerpVal(fromPt.jitter ?? null, noNxtPing ? null : (toPt.jitter ?? null), t);
+      pingChart.options.scales.x.max = displayTs + TRAIL_PAD * POLL_INTERVAL_SEC;
+      pingChart.options.scales.x.min = pingChart.options.scales.x.max - (VIEWPORT + TRAIL_PAD) * POLL_INTERVAL_SEC;
+      pingChart.update('none');
+      if (ex.ph0.y != null) placeCursor(pingCursor, pingChart, displayTs, ex.ph0.y, 'y');
+      else if (fromPt && fromPt.loss) pingCursor.classList.remove('active');
+    }
+  }
+}
+requestAnimationFrame(rafLoop);
 
 function fmt(v, unit) { return v != null ? v + '<span class="card-unit">' + unit + '</span>' : '—'; }
 
@@ -910,7 +1193,16 @@ async function poll() {
 
     const h = data.history;
     lastHistory = h;
-    renderCharts(h);
+    updateGlobalBounds(h);
+
+    // Live charts: rebuild display slice; rAF handles interpolation + redraw.
+    // Past charts: view is frozen; just refresh the scrubber as history grows.
+    if (viewStarts.rate === null) renderRate(h, true);
+    else syncScrubber('rate', h);
+    if (viewStarts.sig  === null) renderSig(h, true);
+    else syncScrubber('sig', h);
+    if (viewStarts.ping === null) renderPing(h, true);
+    else syncScrubber('ping', h);
 
     // Event log
     const events = h.filter(p => p.spike || p.loss || p.roamed ||
@@ -1208,7 +1500,7 @@ setTheme(localStorage.getItem('wfm-theme') || 'midnight');
 poll();
 setInterval(poll, 2000);
 setInterval(() => fetch('/heartbeat').catch(() => {}), 5000);
-document.addEventListener('visibilitychange', () => { if (!document.hidden) fetch('/heartbeat').catch(() => {}); });
+document.addEventListener('visibilitychange', () => { fetch('/heartbeat').catch(() => {}); });
 </script>
 </body>
 </html>
