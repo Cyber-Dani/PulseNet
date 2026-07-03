@@ -42,7 +42,7 @@ A tray icon will appear in your taskbar and the dashboard will open in your brow
 
 ## How to stop
 
-Right-click the tray icon → **Stop & Exit**
+Either close the browser tab (PulseNet will shut down automatically within 20 seconds) or right-click the tray icon and choose **Stop & Exit** to stop it immediately.
 
 ---
 
