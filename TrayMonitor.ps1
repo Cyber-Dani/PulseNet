@@ -104,8 +104,8 @@ function Start-Hidden($script) {
     return [System.Diagnostics.Process]::Start($psi)
 }
 
-$watchProc   = Start-Hidden $watchScript
-$trafficProc = Start-Hidden $trafficScript
+$script:watchProc   = Start-Hidden $watchScript
+$script:trafficProc = Start-Hidden $trafficScript
 
 # -- System tray icon --
 $tray         = New-Object System.Windows.Forms.NotifyIcon
@@ -131,8 +131,8 @@ $tray.add_DoubleClick({ Start-Process $url })
 $openItem.add_Click({  Start-Process $url })
 
 $stopItem.add_Click({
-    $watchProc   | Stop-Process -Force -ErrorAction SilentlyContinue
-    $trafficProc | Stop-Process -Force -ErrorAction SilentlyContinue
+    $script:watchProc   | Stop-Process -Force -ErrorAction SilentlyContinue
+    $script:trafficProc | Stop-Process -Force -ErrorAction SilentlyContinue
     $tray.Visible = $false
     Stop-Process -Id $PID -Force
 })
@@ -150,13 +150,34 @@ $heartbeatTimer = New-Object System.Windows.Forms.Timer
 $heartbeatTimer.Interval = 10000
 $heartbeatTimer.add_Tick({
     $age = ([DateTime]::Now - $syncHash.LastHeartbeat).TotalSeconds
-    if ($age -gt 60) {
-        $watchProc   | Stop-Process -Force -ErrorAction SilentlyContinue
-        $trafficProc | Stop-Process -Force -ErrorAction SilentlyContinue
+    if ($age -gt 600) {
+        $script:watchProc   | Stop-Process -Force -ErrorAction SilentlyContinue
+        $script:trafficProc | Stop-Process -Force -ErrorAction SilentlyContinue
         $tray.Visible = $false
         Stop-Process -Id $PID -Force
     }
 })
 $heartbeatTimer.Start()
+
+# Watchdog: restart collector processes if they die unexpectedly.
+$watchdogTimer = New-Object System.Windows.Forms.Timer
+$watchdogTimer.Interval = 15000
+$watchdogTimer.add_Tick({
+    try {
+        if ($script:watchProc -and $script:watchProc.HasExited) {
+            $ts = (Get-Date).ToString('HH:mm:ss')
+            Write-Host "$ts  [watchdog] watch.ps1 exited - restarting"
+            $script:watchProc = Start-Hidden $watchScript
+        }
+        if ($script:trafficProc -and $script:trafficProc.HasExited) {
+            $ts = (Get-Date).ToString('HH:mm:ss')
+            Write-Host "$ts  [watchdog] traffic-watch.ps1 exited - restarting"
+            $script:trafficProc = Start-Hidden $trafficScript
+        }
+    } catch {
+        Write-Host "[watchdog] error: $($_.Exception.Message)"
+    }
+})
+$watchdogTimer.Start()
 
 [System.Windows.Forms.Application]::Run()

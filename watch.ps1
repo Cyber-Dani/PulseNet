@@ -69,6 +69,7 @@ $ping = New-Object System.Net.NetworkInformation.Ping
 $prevAdapterStats = $null
 
 while ($true) {
+  try {
     $raw = netsh wlan show interfaces 2>$null
 
     $extract = {
@@ -243,5 +244,8 @@ while ($true) {
     $wifiStatus = if ($rx) { "RX:${rx}  TX:${tx}  RSSI:${rssi}dBm  Sig:${sig}%  BSSID:$bssidShort" } else { "No interface" }
     Write-Host "$(Get-Date -Format 'HH:mm:ss')  $wifiStatus$roamFlag  Ping:$pingStatus  $jitStatus  $gwStatus  $dnsStatus$errFlag"
 
+  } catch {
+    Write-Host "$(Get-Date -Format 'HH:mm:ss')  [error] $($_.Exception.Message) - retrying in 2s"
+  }
     Start-Sleep -Seconds 2
 }
