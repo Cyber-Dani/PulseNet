@@ -150,7 +150,7 @@ $heartbeatTimer = New-Object System.Windows.Forms.Timer
 $heartbeatTimer.Interval = 10000
 $heartbeatTimer.add_Tick({
     $age = ([DateTime]::Now - $syncHash.LastHeartbeat).TotalSeconds
-    if ($age -gt 20) {
+    if ($age -gt 60) {
         $watchProc   | Stop-Process -Force -ErrorAction SilentlyContinue
         $trafficProc | Stop-Process -Force -ErrorAction SilentlyContinue
         $tray.Visible = $false

@@ -1208,6 +1208,7 @@ setTheme(localStorage.getItem('wfm-theme') || 'midnight');
 poll();
 setInterval(poll, 2000);
 setInterval(() => fetch('/heartbeat').catch(() => {}), 5000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) fetch('/heartbeat').catch(() => {}); });
 </script>
 </body>
 </html>
