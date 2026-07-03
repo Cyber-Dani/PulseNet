@@ -150,7 +150,7 @@ $heartbeatTimer = New-Object System.Windows.Forms.Timer
 $heartbeatTimer.Interval = 10000
 $heartbeatTimer.add_Tick({
     $age = ([DateTime]::Now - $syncHash.LastHeartbeat).TotalSeconds
-    if ($age -gt 60) {
+    if ($age -gt 600) {
         $watchProc   | Stop-Process -Force -ErrorAction SilentlyContinue
         $trafficProc | Stop-Process -Force -ErrorAction SilentlyContinue
         $tray.Visible = $false
@@ -158,5 +158,20 @@ $heartbeatTimer.add_Tick({
     }
 })
 $heartbeatTimer.Start()
+
+# Watchdog: restart collector processes if they die unexpectedly.
+$watchdogTimer = New-Object System.Windows.Forms.Timer
+$watchdogTimer.Interval = 15000
+$watchdogTimer.add_Tick({
+    if ($script:watchProc.HasExited) {
+        Write-Host "$(Get-Date -Format 'HH:mm:ss')  [watchdog] watch.ps1 exited — restarting"
+        $script:watchProc = Start-Hidden $watchScript
+    }
+    if ($script:trafficProc.HasExited) {
+        Write-Host "$(Get-Date -Format 'HH:mm:ss')  [watchdog] traffic-watch.ps1 exited — restarting"
+        $script:trafficProc = Start-Hidden $trafficScript
+    }
+})
+$watchdogTimer.Start()
 
 [System.Windows.Forms.Application]::Run()
