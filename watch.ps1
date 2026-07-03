@@ -11,7 +11,7 @@ Write-Host "Press Ctrl+C to stop."
 Write-Host ""
 
 $history      = @()
-$maxHistory   = 120
+$maxHistory   = 43200  # 24 hours at 2-second poll interval
 $pingTarget   = "8.8.8.8"
 $spikeMs      = 150   # latency threshold for a spike (ms)
 $lossStreak   = 0
