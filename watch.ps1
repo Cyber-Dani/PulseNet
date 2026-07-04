@@ -1,6 +1,7 @@
 # watch.ps1
 # Run this in PowerShell as: .\watch.ps1
 # It writes data/wifi-data.json every 2 seconds.
+# Auto-detects whether the active connection is WiFi or Ethernet and adapts which metrics it collects.
 # Keep this window open while you use the dashboard.
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -44,14 +45,27 @@ function Get-LastDisconnectReason {
     return $null
 }
 
-# Read WiFi adapter error/discard counters
-function Get-AdapterStats {
+# Detect the active adapter (WiFi or Ethernet) and its type
+function Get-ActiveAdapter {
     try {
-        $wifiAdapter = Get-NetAdapter -ErrorAction SilentlyContinue |
-                       Where-Object { $_.PhysicalMediaType -match '802\.11' -and $_.Status -eq 'Up' } |
-                       Select-Object -First 1
-        if ($wifiAdapter) {
-            $stats = Get-NetAdapterStatistics -Name $wifiAdapter.Name -ErrorAction SilentlyContinue
+        $adapter = Get-NetAdapter -ErrorAction SilentlyContinue |
+                   Where-Object { $_.Status -eq 'Up' -and $_.PhysicalMediaType -match '802\.11|802\.3' } |
+                   Sort-Object -Property @{Expression = { if ($_.PhysicalMediaType -match '802\.3') { 0 } else { 1 } }} |
+                   Select-Object -First 1
+        if ($adapter) {
+            $type = if ($adapter.PhysicalMediaType -match '802\.11') { 'wifi' } else { 'ethernet' }
+            return @{ Name = $adapter.Name; Type = $type; LinkSpeed = $adapter.LinkSpeed }
+        }
+    } catch {}
+    return $null
+}
+
+# Read adapter error/discard counters for whichever adapter is active
+function Get-AdapterStats {
+    param($adapter)
+    try {
+        if ($adapter) {
+            $stats = Get-NetAdapterStatistics -Name $adapter.Name -ErrorAction SilentlyContinue
             if ($stats) {
                 return @{
                     rxErrors   = [long]$stats.ReceivedPacketErrors
@@ -70,27 +84,52 @@ $prevAdapterStats = $null
 
 while ($true) {
   try {
-    $raw = netsh wlan show interfaces 2>$null
+    $activeAdapter = Get-ActiveAdapter
+    $connType      = if ($activeAdapter) { $activeAdapter.Type } else { 'unknown' }
 
-    $extract = {
-        param($pattern)
-        $match = $raw | Select-String -Pattern $pattern
-        if ($match) { $match.Matches[0].Groups[1].Value.Trim() } else { $null }
+    $rx    = $null; $tx    = $null; $rssi  = $null; $sig   = $null
+    $band  = $null; $ch    = $null; $radio = $null; $ssid  = $null; $bssid = $null
+    $linkSpeed = if ($activeAdapter) { $activeAdapter.LinkSpeed } else { $null }
+    $roamed = $false
+
+    if ($connType -eq 'wifi') {
+        $raw = netsh wlan show interfaces 2>$null
+
+        $extract = {
+            param($pattern)
+            $match = $raw | Select-String -Pattern $pattern
+            if ($match) { $match.Matches[0].Groups[1].Value.Trim() } else { $null }
+        }
+
+        $rx    = & $extract 'Receive rate \(Mbps\)\s*:\s*([\d.]+)'
+        $tx    = & $extract 'Transmit rate \(Mbps\)\s*:\s*([\d.]+)'
+        $rssi  = & $extract 'Rssi\s*:\s*([-\d]+)'
+        $sig   = & $extract 'Signal\s*:\s*(\d+)%'
+        $band  = & $extract 'Band\s*:\s*(.+)'
+        $ch    = & $extract 'Channel\s*:\s*(\d+)'
+        $radio = & $extract 'Radio type\s*:\s*(.+)'
+        $ssid  = & $extract 'SSID\s*:\s*(.+)'
+        $bssid = & $extract 'BSSID\s*:\s*([0-9a-fA-F:]{17})'
+
+        # Detect AP roam
+        $roamed = ($prevBssid -ne $null -and $bssid -ne $null -and $bssid -ne $prevBssid)
+        $prevBssid = $bssid
+    } elseif ($connType -eq 'ethernet') {
+        $prevBssid = $null
+        # Ethernet is symmetric — negotiated link speed applies to both directions
+        if ($linkSpeed -match '([\d.]+)\s*(Gbps|Mbps|Kbps)') {
+            $val  = [double]$Matches[1]
+            $mbps = switch ($Matches[2]) {
+                'Gbps' { $val * 1000 }
+                'Mbps' { $val }
+                'Kbps' { $val / 1000 }
+            }
+            $rx = $mbps
+            $tx = $mbps
+        }
+    } else {
+        $prevBssid = $null
     }
-
-    $rx    = & $extract 'Receive rate \(Mbps\)\s*:\s*([\d.]+)'
-    $tx    = & $extract 'Transmit rate \(Mbps\)\s*:\s*([\d.]+)'
-    $rssi  = & $extract 'Rssi\s*:\s*([-\d]+)'
-    $sig   = & $extract 'Signal\s*:\s*(\d+)%'
-    $band  = & $extract 'Band\s*:\s*(.+)'
-    $ch    = & $extract 'Channel\s*:\s*(\d+)'
-    $radio = & $extract 'Radio type\s*:\s*(.+)'
-    $ssid  = & $extract 'SSID\s*:\s*(.+)'
-    $bssid = & $extract 'BSSID\s*:\s*([0-9a-fA-F:]{17})'
-
-    # Detect AP roam
-    $roamed = ($prevBssid -ne $null -and $bssid -ne $null -and $bssid -ne $prevBssid)
-    $prevBssid = $bssid
 
     # Jitter: send $jitterPings in quick succession, measure spread
     $jitterSamples = @()
@@ -161,7 +200,7 @@ while ($true) {
     }
 
     # Adapter error/discard deltas since last sample
-    $adapterNow    = Get-AdapterStats
+    $adapterNow    = Get-AdapterStats -adapter $activeAdapter
     $adapterDelta  = $null
     if ($adapterNow -and $prevAdapterStats) {
         $adapterDelta = @{
@@ -191,6 +230,8 @@ while ($true) {
 
     $point = [ordered]@{
         ts              = $ts
+        connType        = $connType
+        linkSpeed       = $linkSpeed
         rx              = if ($rx)   { [double]$rx }   else { $null }
         tx              = if ($tx)   { [double]$tx }   else { $null }
         rssi            = if ($rssi) { [int]$rssi }    else { $null }
@@ -241,8 +282,14 @@ while ($true) {
     $roamFlag   = if ($roamed) { " ROAMED" } else { "" }
     $errTotal   = if ($adapterDelta) { $adapterDelta.rxErrors + $adapterDelta.txErrors + $adapterDelta.rxDiscards + $adapterDelta.txDiscards } else { 0 }
     $errFlag    = if ($errTotal -gt 0) { " ERR:rx=$($adapterDelta.rxErrors)/tx=$($adapterDelta.txErrors) DISC:rx=$($adapterDelta.rxDiscards)/tx=$($adapterDelta.txDiscards)" } else { "" }
-    $wifiStatus = if ($rx) { "RX:${rx}  TX:${tx}  RSSI:${rssi}dBm  Sig:${sig}%  BSSID:$bssidShort" } else { "No interface" }
-    Write-Host "$(Get-Date -Format 'HH:mm:ss')  $wifiStatus$roamFlag  Ping:$pingStatus  $jitStatus  $gwStatus  $dnsStatus$errFlag"
+    $linkStatus = if ($connType -eq 'wifi') {
+        if ($rx) { "RX:${rx}  TX:${tx}  RSSI:${rssi}dBm  Sig:${sig}%  BSSID:$bssidShort" } else { "No interface" }
+    } elseif ($connType -eq 'ethernet') {
+        "Ethernet  Link:${linkSpeed}"
+    } else {
+        "No interface"
+    }
+    Write-Host "$(Get-Date -Format 'HH:mm:ss')  $linkStatus$roamFlag  Ping:$pingStatus  $jitStatus  $gwStatus  $dnsStatus$errFlag"
 
   } catch {
     Write-Host "$(Get-Date -Format 'HH:mm:ss')  [error] $($_.Exception.Message) - retrying in 2s"

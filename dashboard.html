@@ -204,6 +204,9 @@
   }
   .pill-spike { background: rgba(245,158,11,0.15); color: var(--amber); }
   .pill-loss  { background: rgba(239,68,68,0.15);  color: var(--red); }
+  .pill-conn  { background: rgba(59,130,246,0.15); color: var(--rx); }
+
+  .hidden-conn { display: none !important; }
 
   .card-label {
     font-family: 'IBM Plex Mono', monospace;
@@ -467,6 +470,7 @@
     <div style="width:1px;height:18px;background:var(--border2);margin:0 20px"></div>
   </div>
   <div style="display:flex;align-items:center;gap:10px">
+    <div id="conn-type" class="pill" style="display:none"></div>
     <div id="status">waiting for data</div>
     <div id="theme-picker">
       <button class="hdr-btn" onclick="toggleThemePicker(event)">Theme ▾</button>
@@ -476,7 +480,7 @@
   </div>
 </header>
 
-<div class="cards" style="grid-template-columns:repeat(6,1fr)">
+<div class="cards" id="top-cards" style="grid-template-columns:repeat(6,1fr)">
   <div class="card rx">
     <div class="card-label">Link Speed ↓</div>
     <div class="card-value" id="rx-val">—<span class="card-unit">Mbps</span></div>
@@ -487,12 +491,12 @@
     <div class="card-value" id="tx-val">—<span class="card-unit">Mbps</span></div>
     <div class="card-delta" id="tx-delta">max negotiated, not actual speed</div>
   </div>
-  <div class="card rssi">
+  <div class="card rssi wifi-only">
     <div class="card-label">RSSI</div>
     <div class="card-value" id="rssi-val">—<span class="card-unit">dBm</span></div>
     <div class="card-delta" id="rssi-delta">&nbsp;</div>
   </div>
-  <div class="card sig">
+  <div class="card sig wifi-only">
     <div class="card-label">Signal</div>
     <div class="card-value" id="sig-val">—<span class="card-unit">%</span></div>
     <div class="card-delta" id="sig-delta">&nbsp;</div>
@@ -509,7 +513,7 @@
   </div>
 </div>
 
-<div class="cards" style="grid-template-columns:repeat(6,1fr);margin-bottom:20px">
+<div class="cards" id="bottom-cards" style="grid-template-columns:repeat(6,1fr);margin-bottom:20px">
   <div class="card gateway">
     <div class="card-label">Gateway ping</div>
     <div class="card-value" id="gw-val">—<span class="card-unit">ms</span></div>
@@ -530,7 +534,7 @@
     <div class="card-value" id="jitter-val">—<span class="card-unit">ms</span></div>
     <div class="card-delta" id="jitter-range">&nbsp;</div>
   </div>
-  <div class="card" style="border-top-color:#94a3b8">
+  <div class="card wifi-only" style="border-top-color:#94a3b8">
     <div class="card-label">Access point</div>
     <div class="card-value" id="bssid-val" style="font-size:13px;letter-spacing:0.04em">—</div>
     <div class="card-delta" id="bssid-roam">&nbsp;</div>
@@ -542,7 +546,7 @@
   </div>
 </div>
 
-<div class="meta">
+<div class="meta wifi-only" id="wifi-meta">
   SSID&nbsp;<span id="m-ssid">—</span>
   &nbsp;&nbsp;Band&nbsp;<span id="m-band">—</span>
   &nbsp;&nbsp;Channel&nbsp;<span id="m-ch">—</span>
@@ -552,7 +556,7 @@
 <div class="charts">
   <div class="chart-wrap">
     <div class="chart-header">
-      <div class="chart-title">WiFi Link Rate <span style="font-size:11px;color:var(--muted);text-transform:none;letter-spacing:0">(max negotiated speed, not actual speed)</span></div>
+      <div class="chart-title" id="rate-chart-title">Link Rate <span style="font-size:11px;color:var(--muted);text-transform:none;letter-spacing:0">(max negotiated speed, not actual speed)</span></div>
       <div class="legend">
         <div class="legend-item"><div class="legend-dot" style="background:var(--rx)"></div>Download link</div>
         <div class="legend-item"><div class="legend-dot" style="background:var(--tx)"></div>Upload link</div>
@@ -564,7 +568,7 @@
       <div class="timeline-label timeline-live">● Live</div>
     </div>
   </div>
-  <div class="chart-wrap">
+  <div class="chart-wrap wifi-only" id="sig-chart-wrap">
     <div class="chart-header">
       <div class="chart-title">Signal quality</div>
       <div class="legend">
@@ -1086,6 +1090,33 @@ async function poll() {
     st.textContent = 'live — ' + timeFmt(data.updated);
     st.className = 'live';
 
+    // Adapt UI to connection type (wifi / ethernet / unknown)
+    const isWifi = c.connType === 'wifi';
+    const isEth  = c.connType === 'ethernet';
+    document.querySelectorAll('.wifi-only').forEach(el => el.classList.toggle('hidden-conn', !isWifi));
+
+    // Recompute grid columns so hidden wifi-only cards don't leave gaps
+    ['top-cards', 'bottom-cards'].forEach(id => {
+      const grid = document.getElementById(id);
+      if (!grid) return;
+      const visible = Array.from(grid.children).filter(el => !el.classList.contains('hidden-conn')).length;
+      grid.style.gridTemplateColumns = `repeat(${visible}, 1fr)`;
+    });
+
+    const ctBadge = document.getElementById('conn-type');
+    if (isWifi || isEth) {
+      ctBadge.style.display = 'inline-block';
+      ctBadge.className = 'pill pill-conn';
+      ctBadge.textContent = isWifi ? 'WiFi' : 'Ethernet';
+    } else {
+      ctBadge.style.display = 'none';
+    }
+
+    const rateTitle = document.getElementById('rate-chart-title');
+    if (rateTitle) {
+      rateTitle.firstChild.textContent = isWifi ? 'WiFi Link Rate ' : isEth ? 'Ethernet Link Rate ' : 'Link Rate ';
+    }
+
     document.getElementById('rx-val').innerHTML = fmt(c.rx, 'Mbps');
     document.getElementById('tx-val').innerHTML = fmt(c.tx, 'Mbps');
     document.getElementById('rssi-val').innerHTML = fmt(c.rssi, 'dBm');
@@ -1393,14 +1424,18 @@ function downloadReport() {
 
   const lines = [
     `WIFI_REPORT v3`,
-    `ts:${ts} ssid:${c.ssid} bssid:${c.bssid || '?'} band:${c.band} ch:${c.ch} radio:${c.radio}`,
+    `ts:${ts} connType:${c.connType || 'unknown'}` + (c.connType === 'wifi'
+      ? ` ssid:${c.ssid} bssid:${c.bssid || '?'} band:${c.band} ch:${c.ch} radio:${c.radio}`
+      : ` linkSpeed:${c.linkSpeed || '?'}`),
     `gateway:${c.gateway || 'unknown'} samples:${h.length} span:${span} spike_threshold:${lastData.spikeMs || 150}ms ping_target:${lastData.pingTarget || '8.8.8.8'}`,
     ``,
     `# stats (rx/tx in Mbps, rssi in dBm, sig in %, ping/gateway/dns/jitter in ms)`,
     `rx         ${statLine(h.map(p => p.rx))}`,
     `tx         ${statLine(h.map(p => p.tx))}`,
-    `rssi       ${statLine(h.map(p => p.rssi))}`,
-    `sig        ${statLine(h.map(p => p.sig))}`,
+    ...(c.connType === 'wifi' ? [
+      `rssi       ${statLine(h.map(p => p.rssi))}`,
+      `sig        ${statLine(h.map(p => p.sig))}`,
+    ] : []),
     `ping       ${pingVals.length ? statLine(pingVals) : 'n/a'} spikes:${spikeCount} loss:${lossCount}(${lossPct}%)`,
     `jitter     ${jitterVals.length ? statLine(jitterVals) : 'n/a'}`,
     `gateway_ms ${gwVals.length ? statLine(gwVals) : 'n/a'} loss:${gwLossCount}`,
