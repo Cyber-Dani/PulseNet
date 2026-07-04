@@ -679,8 +679,8 @@ const sigChart = new Chart(document.getElementById('sigChart'), {
   options: {
     ...cfg,
     scales: makeScales({
-      y:  { afterFit: yFit, ticks: { color: cssVar('--muted'), font: { family: "'IBM Plex Mono'", size: 12 } }, grid: { color: cssVar('--border') }, position: 'left',  title: { display: true, text: 'dBm', color: cssVar('--muted'), font: { size: 12 } } },
-      y2: { afterFit: yFit, ticks: { color: cssVar('--muted'), font: { family: "'IBM Plex Mono'", size: 12 } }, grid: { drawOnChartArea: false },          position: 'right', min: 0, max: 100, title: { display: true, text: '%',   color: cssVar('--muted'), font: { size: 12 } } }
+      y:  { afterFit: yFit, ticks: { color: cssVar('--muted'), font: { family: "'IBM Plex Mono'", size: 12 }, maxTicksLimit: 6 }, grid: { color: cssVar('--border') }, position: 'left',  title: { display: true, text: 'dBm', color: cssVar('--muted'), font: { size: 12 } } },
+      y2: { afterFit: yFit, ticks: { color: cssVar('--muted'), font: { family: "'IBM Plex Mono'", size: 12 }, maxTicksLimit: 6 }, grid: { drawOnChartArea: false },          position: 'right', min: 0, max: 100, title: { display: true, text: '%',   color: cssVar('--muted'), font: { size: 12 } } }
     })
   }
 });
@@ -1500,7 +1500,10 @@ setTheme(localStorage.getItem('wfm-theme') || 'midnight');
 poll();
 setInterval(poll, 2000);
 setInterval(() => fetch('/heartbeat').catch(() => {}), 5000);
-document.addEventListener('visibilitychange', () => { fetch('/heartbeat').catch(() => {}); });
+document.addEventListener('visibilitychange', () => {
+  fetch('/heartbeat').catch(() => {});
+  if (!document.hidden) poll();
+});
 </script>
 </body>
 </html>

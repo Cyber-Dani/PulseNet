@@ -9,6 +9,13 @@ $watchScript    = Join-Path $scriptDir "watch.ps1"
 $trafficScript  = Join-Path $scriptDir "traffic-watch.ps1"
 $port           = 8765
 $url            = "http://localhost:$port/dashboard.html"
+$logFile        = Join-Path $scriptDir "traymonitor.log"
+
+function Write-Log($msg) {
+    $line = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')  $msg"
+    Write-Host $line
+    Add-Content -Path $logFile -Value $line -Encoding UTF8
+}
 
 # Kill any leftover processes from a previous session.
 Get-WmiObject Win32_Process -Filter "Name='powershell.exe'" |
@@ -104,8 +111,10 @@ function Start-Hidden($script) {
     return [System.Diagnostics.Process]::Start($psi)
 }
 
+Write-Log "PulseNet starting"
 $script:watchProc   = Start-Hidden $watchScript
 $script:trafficProc = Start-Hidden $trafficScript
+Write-Log "Collectors started (watch PID $($script:watchProc.Id), traffic PID $($script:trafficProc.Id))"
 
 # -- System tray icon --
 $tray         = New-Object System.Windows.Forms.NotifyIcon
@@ -131,6 +140,7 @@ $tray.add_DoubleClick({ Start-Process $url })
 $openItem.add_Click({  Start-Process $url })
 
 $stopItem.add_Click({
+    Write-Log "Stopped by user"
     $script:watchProc   | Stop-Process -Force -ErrorAction SilentlyContinue
     $script:trafficProc | Stop-Process -Force -ErrorAction SilentlyContinue
     $tray.Visible = $false
@@ -145,12 +155,27 @@ $tray.BalloonTipText  = "Double-click the tray icon to open the dashboard."
 $tray.BalloonTipIcon  = [System.Windows.Forms.ToolTipIcon]::Info
 $tray.ShowBalloonTip(4000)
 
-# Shut down automatically when the browser tab has been closed for >20 seconds.
+# Shut down when the browser tab has been closed for >60 seconds.
+# Sleep detection: if the timer fires but wall-clock time jumped by more than
+# 60s, the system was asleep — reset the heartbeat so a sleep never looks like
+# a closed tab.
+$script:lastTick = [DateTime]::Now
 $heartbeatTimer = New-Object System.Windows.Forms.Timer
 $heartbeatTimer.Interval = 10000
 $heartbeatTimer.add_Tick({
-    $age = ([DateTime]::Now - $syncHash.LastHeartbeat).TotalSeconds
-    if ($age -gt 600) {
+    $now     = [DateTime]::Now
+    $elapsed = ($now - $script:lastTick).TotalSeconds
+    $script:lastTick = $now
+
+    if ($elapsed -gt 60) {
+        Write-Log "System wake detected (${elapsed}s gap) - heartbeat reset"
+        $syncHash.LastHeartbeat = $now
+        return
+    }
+
+    $age = ($now - $syncHash.LastHeartbeat).TotalSeconds
+    if ($age -gt 60) {
+        Write-Log "Heartbeat timeout ($([int]$age)s) - shutting down"
         $script:watchProc   | Stop-Process -Force -ErrorAction SilentlyContinue
         $script:trafficProc | Stop-Process -Force -ErrorAction SilentlyContinue
         $tray.Visible = $false
@@ -165,17 +190,15 @@ $watchdogTimer.Interval = 15000
 $watchdogTimer.add_Tick({
     try {
         if ($script:watchProc -and $script:watchProc.HasExited) {
-            $ts = (Get-Date).ToString('HH:mm:ss')
-            Write-Host "$ts  [watchdog] watch.ps1 exited - restarting"
+            Write-Log "[watchdog] watch.ps1 exited (code $($script:watchProc.ExitCode)) - restarting"
             $script:watchProc = Start-Hidden $watchScript
         }
         if ($script:trafficProc -and $script:trafficProc.HasExited) {
-            $ts = (Get-Date).ToString('HH:mm:ss')
-            Write-Host "$ts  [watchdog] traffic-watch.ps1 exited - restarting"
+            Write-Log "[watchdog] traffic-watch.ps1 exited (code $($script:trafficProc.ExitCode)) - restarting"
             $script:trafficProc = Start-Hidden $trafficScript
         }
     } catch {
-        Write-Host "[watchdog] error: $($_.Exception.Message)"
+        Write-Log "[watchdog] error: $($_.Exception.Message)"
     }
 })
 $watchdogTimer.Start()
