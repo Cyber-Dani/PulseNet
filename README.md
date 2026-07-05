@@ -53,6 +53,32 @@ The tag/description list lives in [`data/tracker-rules.json`](data/tracker-rules
 
 ---
 
+## History tab
+
+Every time PulseNet (re)starts, the session that just ended is archived to `sessions/`. Switch to the **History** tab to browse past sessions:
+
+- The session list shows start time, duration, average ping, loss/spike counts, and average signal, sorted newest first — the most recent session is selected automatically so you see a chart immediately.
+- Click any session to view its charts and event log read-only, exactly as they looked live.
+- **Download** produces the same `.txt` report as the live dashboard; **Delete** (or **Delete all**) removes archived sessions you no longer need.
+
+Sessions shorter than 5 data points aren't archived, and everything is stored locally in `sessions/` — nothing leaves your machine.
+
+---
+
+## Insights tab
+
+The **Insights** tab looks across all your saved sessions (up to the last 50) to surface patterns a single session can't show on its own:
+
+- **Event frequency over time** — a daily bar chart of loss/spike counts, to see whether things are getting better or worse.
+- **Time of day** — an hourly breakdown, useful for spotting recurring ISP congestion or maintenance windows.
+- **Local link vs. WAN vs. router** — buckets every loss/spike by likely cause, so you know whether to chase a cable or escalate to your ISP.
+- **Top correlated apps/hosts** — which app or host was most often active right around a loss or spike, across every session.
+- **Session list** — headline stats per session, linking into the History tab for a closer look.
+
+Needs at least two saved sessions to show anything meaningful.
+
+---
+
 ## How to start
 
 1. **Download the repository** — click the green **Code** button on GitHub and choose **Download ZIP**.
@@ -61,7 +87,7 @@ The tag/description list lives in [`data/tracker-rules.json`](data/tracker-rules
 
 3. **Double-click `Start-PulseNet.bat`** inside the extracted folder.
 
-A tray icon will appear in your taskbar and the dashboard will open in your browser automatically.
+The dashboard will open in your browser automatically.
 
 > **Don't panic if a terminal window briefly flashes up**, that's completely normal. It's just Windows showing the startup script before it moves to the background.
 
@@ -71,7 +97,7 @@ A tray icon will appear in your taskbar and the dashboard will open in your brow
 
 ## How to stop
 
-Either close the browser tab (PulseNet will shut down automatically within about a minute) or right-click the tray icon and choose **Stop & Exit** to stop it immediately.
+Close the browser tab — PulseNet detects this and shuts itself down automatically within a few minutes.
 
 ---
 
@@ -89,6 +115,6 @@ Either close the browser tab (PulseNet will shut down automatically within about
 
 `traffic-watch.ps1` polls active TCP connections, resolves hostnames and GeoIP/org info for remote IPs, and writes them to `data/traffic-data.json` on the same interval.
 
-`TrayMonitor.ps1` runs both collectors silently in the background, starts a local web server on `http://localhost:8765`, and manages the tray icon.
+`TrayMonitor.ps1` runs both collectors silently in the background and starts a local web server on `http://localhost:8765`. Before each (re)start it archives the previous session's data to `sessions/` and exposes it over that same server for the History and Insights tabs.
 
-The dashboard (`dashboard.html`) reads `data/wifi-data.json` every 2 seconds and updates the charts and cards live. The traffic dashboard (`traffic.html`) does the same with `data/traffic-data.json`.
+The dashboard (`dashboard.html`) reads `data/wifi-data.json` every 2 seconds and updates the charts and cards live. The traffic dashboard (`traffic.html`) does the same with `data/traffic-data.json`. The History (`history.html`) and Insights (`insights.html`) tabs read from `sessions/` via the server instead, since that data isn't part of the live poll loop.
