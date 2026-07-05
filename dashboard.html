@@ -1082,6 +1082,7 @@ function timeFmt(ts) {
 }
 
 let trafficHistory = [];
+let pingTargetNames = ['8.8.8.8', '1.1.1.1'];
 
 async function pollTrafficHistory() {
   try {
@@ -1111,6 +1112,8 @@ async function poll() {
     lastData = data;
     document.getElementById('error').style.display = 'none';
     pollTrafficHistory();
+
+    pingTargetNames = (data.pingTarget || '8.8.8.8,1.1.1.1').split(',');
 
     if (data.updated === lastTs) return;
     lastTs = data.updated;
@@ -1287,6 +1290,12 @@ async function poll() {
         if (p.loss) parts.push('internet: no reply');
         else if (p.ping != null) parts.push(`internet: ${p.ping}ms`);
         if (p.jitter != null && !p.loss) parts.push(`jitter: ${p.jitter}ms`);
+        if ((p.loss || p.spike) && p.secondaryMs !== undefined) {
+          const primaryOk   = !p.loss && p.ping != null;
+          const primaryText = primaryOk ? `${pingTargetNames[0]}: ${p.ping}ms` : `${pingTargetNames[0]}: no reply`;
+          const secText     = p.secondaryLoss ? `${pingTargetNames[1]}: no reply` : `${pingTargetNames[1]}: ${p.secondaryMs}ms`;
+          parts.push(`<span style="color:var(--muted)">${primaryText} &middot; ${secText}</span>`);
+        }
         if (p.loss || p.spike) {
           if (p.gatewayLoss) parts.push('<span style="color:var(--red)">router: no reply</span>');
           else if (p.gatewayMs != null) parts.push(`router: ${p.gatewayMs}ms`);

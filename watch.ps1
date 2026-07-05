@@ -11,14 +11,15 @@ Write-Host "PulseNet running. Output: $outputFile"
 Write-Host "Press Ctrl+C to stop."
 Write-Host ""
 
-$history      = @()
-$maxHistory   = 43200  # 24 hours at 2-second poll interval
-$pingTarget   = "8.8.8.8"
-$spikeMs      = 150   # latency threshold for a spike (ms)
-$lossStreak   = 0
-$dnsTarget    = "google.com"
-$jitterPings  = 4     # pings per interval for jitter measurement
-$prevBssid    = $null # track AP roaming
+$history        = @()
+$maxHistory     = 43200  # 24 hours at 2-second poll interval
+$pingTarget     = "8.8.8.8"   # primary — Google public DNS
+$pingTarget2    = "1.1.1.1"   # secondary — Cloudflare public DNS
+$spikeMs        = 150   # latency threshold for a spike (ms)
+$lossStreak     = 0
+$dnsTarget      = "google.com"
+$jitterPings    = 4     # pings per interval for jitter measurement (primary target only)
+$prevBssid      = $null # track AP roaming
 
 # Detect default gateway once (refresh if it changes)
 function Get-Gateway {
@@ -131,24 +132,17 @@ while ($true) {
         $prevBssid = $null
     }
 
-    # Jitter: send $jitterPings in quick succession, measure spread
+    # Jitter: send $jitterPings in quick succession against the primary target, measure spread
     $jitterSamples = @()
-    $pingMs        = $null
-    $pingLoss      = $false
     for ($i = 0; $i -lt $jitterPings; $i++) {
         try {
             $reply = $ping.Send($pingTarget, 1000)
-            if ($reply.Status -eq 'Success') {
-                $jitterSamples += [int]$reply.RoundtripTime
-            } else {
-                $pingLoss = $true
-            }
-        } catch {
-            $pingLoss = $true
-        }
+            if ($reply.Status -eq 'Success') { $jitterSamples += [int]$reply.RoundtripTime }
+        } catch {}
     }
-    if ($jitterSamples.Count -gt 0) {
-        $pingMs = [int]($jitterSamples | Measure-Object -Average).Average
+    $primaryFailed = ($jitterSamples.Count -eq 0)
+    if (-not $primaryFailed) {
+        $primaryMs = [int]($jitterSamples | Measure-Object -Average).Average
         # jitter = mean absolute deviation between consecutive samples
         $jitterMs = $null
         if ($jitterSamples.Count -ge 2) {
@@ -161,10 +155,37 @@ while ($true) {
         $pingMin = ($jitterSamples | Measure-Object -Minimum).Minimum
         $pingMax = ($jitterSamples | Measure-Object -Maximum).Maximum
     } else {
-        $jitterMs = $null
-        $pingMin  = $null
-        $pingMax  = $null
-        $pingLoss = $true
+        $primaryMs = $null
+        $jitterMs  = $null
+        $pingMin   = $null
+        $pingMax   = $null
+    }
+
+    # Secondary target — pinged once per interval. A loss is only reported if BOTH
+    # targets fail; this avoids false positives from a momentary blip on a single
+    # public DNS server rather than an actual local/WAN outage.
+    $secondaryMs     = $null
+    $secondaryFailed = $true
+    try {
+        $reply2 = $ping.Send($pingTarget2, 1000)
+        if ($reply2.Status -eq 'Success') {
+            $secondaryMs     = [int]$reply2.RoundtripTime
+            $secondaryFailed = $false
+        }
+    } catch {}
+
+    $pingLoss = $primaryFailed -and $secondaryFailed
+    if ($primaryFailed -and -not $secondaryFailed) {
+        # Primary target down but secondary responded — connection is fine, report
+        # the secondary's latency instead of a false loss.
+        $pingMs  = $secondaryMs
+        $pingMin = $secondaryMs
+        $pingMax = $secondaryMs
+    } elseif (-not $primaryFailed -and -not $secondaryFailed) {
+        # Both responded — report the better (lower-latency) path.
+        $pingMs = [Math]::Min($primaryMs, $secondaryMs)
+    } else {
+        $pingMs = $primaryMs
     }
 
     # Gateway (router) ping
@@ -247,7 +268,11 @@ while ($true) {
         pingMax         = $pingMax
         jitter          = $jitterMs
         loss            = $pingLoss
-        spike           = ($pingMs -ne $null -and $pingMs -ge $spikeMs)
+        secondaryMs     = $secondaryMs
+        secondaryLoss   = $secondaryFailed
+        # Both targets must independently exceed the threshold — a single slow
+        # public DNS server shouldn't be reported as a spike in the user's connection.
+        spike           = ($pingMs -ne $null -and $pingMs -ge $spikeMs -and -not $secondaryFailed -and $secondaryMs -ge $spikeMs)
         gateway         = $gateway
         gatewayMs       = $gatewayMs
         gatewayLoss     = $gatewayLoss
@@ -268,13 +293,13 @@ while ($true) {
         current    = $point
         history    = $history
         spikeMs    = $spikeMs
-        pingTarget = $pingTarget
+        pingTarget = "$pingTarget,$pingTarget2"
     } | ConvertTo-Json -Depth 6
 
     $json | Out-File -FilePath $outputFile -Encoding UTF8 -NoNewline
 
     # Console status line
-    $pingStatus = if ($pingLoss) { "LOSS(x$lossStreak)" } elseif ($pingMs -ge $spikeMs) { "SPIKE ${pingMs}ms" } else { "${pingMs}ms" }
+    $pingStatus = if ($pingLoss) { "LOSS(x$lossStreak)" } elseif ($point.spike) { "SPIKE ${pingMs}ms" } else { "${pingMs}ms" }
     $jitStatus  = if ($jitterMs -ne $null) { "jitter:${jitterMs}ms" } else { "" }
     $gwStatus   = if ($gatewayLoss) { "GW:LOSS" } else { "GW:${gatewayMs}ms" }
     $dnsStatus  = if ($dnsLoss) { "DNS:LOSS" } else { "DNS:${dnsMs}ms" }
