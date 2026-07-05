@@ -669,6 +669,7 @@ const pingChart = new Chart(document.getElementById('pingChart'), {
   data: { datasets: [
     { label: 'Ping avg', data: [], borderColor: '#fb923c', backgroundColor: 'rgba(251,146,60,0.06)', tension: 0.3, pointRadius: 0, borderWidth: 1.5, fill: true },
     { label: 'Jitter',   data: [], borderColor: '#ec4899', backgroundColor: 'transparent', tension: 0.3, pointRadius: 0, borderWidth: 1, borderDash: [3,3] },
+    { label: 'Loss', data: [], showLine: false, pointRadius: 5, pointHoverRadius: 6, pointBackgroundColor: '#ef4444', pointBorderColor: '#ef4444' },
   ]},
   options: {
     ...cfg,
@@ -875,6 +876,7 @@ function renderPing(h, isLive) {
     pingChart.data.datasets[0].pointRadius         = ex.radii;
     pingChart.data.datasets[0].pointBackgroundColor = ex.colors;
     pingChart.data.datasets[1].data               = ex.d1;
+    pingChart.data.datasets[2].data               = base.filter(p => p.loss).map(p => ({ x: p.ts, y: 0 }));
     rafState.ping.cutoff = lo;
   } else {
     pingChart.data.datasets[0].data = slice.map(p => ({ x: p.ts, y: p.loss ? null : (p.ping ?? null) }));
@@ -882,6 +884,7 @@ function renderPing(h, isLive) {
     pingChart.data.datasets[0].pointBackgroundColor = slice.map(p =>
       p.loss ? '#ef4444' : p.roamed ? '#94a3b8' : p.spike ? '#f59e0b' : '#fb923c');
     pingChart.data.datasets[1].data = slice.map(p => ({ x: p.ts, y: p.loss ? null : (p.jitter ?? null) }));
+    pingChart.data.datasets[2].data = slice.filter(p => p.loss).map(p => ({ x: p.ts, y: 0 }));
     const endTs = slice.length ? slice[slice.length - 1].ts : Date.now() / 1000;
     setXWindow(pingChart, endTs);
     pingChart.update('none');
