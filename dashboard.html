@@ -471,6 +471,8 @@
     <nav style="display:flex;align-items:center;gap:4px">
       <a href="dashboard.html" style="font-family:'IBM Plex Sans',sans-serif;font-size:14px;font-weight:500;color:var(--text);text-decoration:none;padding:6px 12px;border-radius:4px;background:var(--border)">Signal</a>
       <a href="traffic.html"   style="font-family:'IBM Plex Sans',sans-serif;font-size:14px;font-weight:400;color:var(--muted);text-decoration:none;padding:6px 12px;border-radius:4px;transition:background .15s,color .15s" onmouseover="this.style.background='var(--border)';this.style.color='var(--text)'" onmouseout="this.style.background='transparent';this.style.color='var(--muted)'">Traffic</a>
+      <a href="history.html"   style="font-family:'IBM Plex Sans',sans-serif;font-size:14px;font-weight:400;color:var(--muted);text-decoration:none;padding:6px 12px;border-radius:4px;transition:background .15s,color .15s" onmouseover="this.style.background='var(--border)';this.style.color='var(--text)'" onmouseout="this.style.background='transparent';this.style.color='var(--muted)'">History</a>
+      <a href="insights.html"  style="font-family:'IBM Plex Sans',sans-serif;font-size:14px;font-weight:400;color:var(--muted);text-decoration:none;padding:6px 12px;border-radius:4px;transition:background .15s,color .15s" onmouseover="this.style.background='var(--border)';this.style.color='var(--text)'" onmouseout="this.style.background='transparent';this.style.color='var(--muted)'">Insights</a>
     </nav>
   </div>
   <div style="display:flex;align-items:center;gap:10px">
@@ -614,6 +616,7 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="shared.js"></script>
 <script>
 function cssVar(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
 
@@ -1093,17 +1096,6 @@ async function pollTrafficHistory() {
   } catch (e) { /* best-effort — event log just won't show traffic context */ }
 }
 
-function nearestTrafficSnapshot(ts) {
-  if (!trafficHistory.length) return null;
-  let best = null, bestDiff = Infinity;
-  for (const snap of trafficHistory) {
-    const diff = Math.abs(snap.ts - ts);
-    if (diff < bestDiff) { best = snap; bestDiff = diff; }
-  }
-  // Traffic polls every 3s — don't attribute a snapshot more than ~8s away from the event.
-  return (best && bestDiff <= 8) ? best : null;
-}
-
 async function poll() {
   try {
     const r = await fetch('data/wifi-data.json?t=' + Date.now());
@@ -1310,7 +1302,7 @@ async function poll() {
           ? `<br><span style="color:var(--muted);font-size:10px;padding-left:2px">↳ ${verdict}</span>`
           : '';
 
-        const snap = nearestTrafficSnapshot(p.ts);
+        const snap = nearestTrafficSnapshot(trafficHistory, p.ts);
         let trafficLine = '';
         if (snap && (snap.topApps.length || snap.topHosts.length)) {
           const app  = snap.topApps[0]  ? `${snap.topApps[0].name} (${snap.topApps[0].pct}%)`  : null;
@@ -1334,42 +1326,6 @@ async function poll() {
     document.getElementById('status').textContent = 'no data';
     document.getElementById('status').className = '';
   }
-}
-
-function diagnose(p) {
-  const ae = p.adapterErrors;
-  const aeTotal = ae ? (ae.rxErrors||0)+(ae.txErrors||0)+(ae.rxDiscards||0)+(ae.txDiscards||0) : 0;
-
-  if (p.loss) {
-    if (p.connType === 'unknown')
-      return 'Your network adapter reported no active link at that moment. This points to a local cable, port, or driver/power-saving issue on this PC — not your router or ISP.';
-    if (p.gatewayLoss)
-      return 'Your router was also unreachable. The problem is between your router and your ISP, or the router itself went down.';
-    if (p.roamed)
-      return 'Connection dropped during an access point switch. The handoff between access points did not complete cleanly.';
-    if (aeTotal > 0)
-      return 'Your Wi-Fi adapter reported errors during the drop. This points to a possible driver or hardware issue.';
-    if (p.rssi != null && p.rssi < -72)
-      return 'Signal was weak at the time of the drop. You may be too far from the router.';
-    return 'Your router was reachable but the internet was not. This is likely a temporary ISP or WAN issue.';
-  }
-
-  if (p.spike) {
-    const gwFast = !p.gatewayLoss && p.gatewayMs != null && p.gatewayMs < 20;
-    if (gwFast)
-      return 'Your router responded quickly but the internet was slow. Congestion is likely on the ISP side.';
-    if (p.jitter != null && p.jitter > 20)
-      return 'High latency with unstable jitter. This suggests local network congestion or wireless interference.';
-    return 'Brief latency spike. This is likely temporary network congestion.';
-  }
-
-  if (p.roamed)
-    return 'Your device switched to a different access point.';
-
-  if (aeTotal > 0)
-    return 'Your Wi-Fi adapter reported transmission errors. This may be caused by interference or a driver issue.';
-
-  return null;
 }
 
 function updateHealthCard(current, history) {
@@ -1440,89 +1396,9 @@ function updateHealthCard(current, history) {
   set('var(--green)', 'var(--green)', 'Everything looks good', 'No issues detected this session.');
 }
 
-function statLine(vals) {
-  if (!vals.length) return 'n/a';
-  const sorted = [...vals].sort((a, b) => a - b);
-  const avg = vals.reduce((s, v) => s + v, 0) / vals.length;
-  const pct = p => sorted[Math.min(Math.floor(p * sorted.length / 100), sorted.length - 1)];
-  return `avg=${avg.toFixed(1)} min=${sorted[0]} max=${sorted[sorted.length-1]} p5=${pct(5)} p95=${pct(95)}`;
-}
-
 function downloadReport() {
   if (!lastData) { alert('No data yet — wait for the first poll.'); return; }
-  const { current: c, history: h, updated } = lastData;
-  const ts = new Date(updated * 1000).toISOString();
-  const span = h.length > 1 ? Math.round((h[h.length-1].ts - h[0].ts) / 60) + 'm' : '0m';
-
-  const pingVals = h.filter(p => !p.loss && p.ping != null).map(p => p.ping);
-  const lossCount = h.filter(p => p.loss).length;
-  const spikeCount = h.filter(p => p.spike).length;
-  const lossPct = h.length ? ((lossCount / h.length) * 100).toFixed(1) : '0.0';
-
-  const gwVals    = h.filter(p => !p.gatewayLoss && p.gatewayMs != null).map(p => p.gatewayMs);
-  const dnsVals   = h.filter(p => !p.dnsLoss && p.dnsMs != null).map(p => p.dnsMs);
-  const jitterVals = h.filter(p => p.jitter != null).map(p => p.jitter);
-  const gwLossCount   = h.filter(p => p.gatewayLoss).length;
-  const dnsLossCount  = h.filter(p => p.dnsLoss).length;
-  const roamCount     = h.filter(p => p.roamed).length;
-  const adapterErrTotal = h.reduce((s, p) => {
-    const ae = p.adapterErrors;
-    return s + (ae ? (ae.rxErrors||0)+(ae.txErrors||0)+(ae.rxDiscards||0)+(ae.txDiscards||0) : 0);
-  }, 0);
-  const disconnectEvents = h.filter(p => p.disconnectEvent).map(p =>
-    `  ${new Date(p.disconnectEvent.ts * 1000).toISOString()} ${p.disconnectEvent.reason}`
-  );
-  const bssidChanges = h.filter(p => p.roamed).map(p =>
-    `  ${new Date(p.ts * 1000).toISOString()} -> ${(p.bssid || '?').toUpperCase()}`
-  );
-
-  const lines = [
-    `WIFI_REPORT v3`,
-    `ts:${ts} connType:${c.connType || 'unknown'}` + (c.connType === 'wifi'
-      ? ` ssid:${c.ssid} bssid:${c.bssid || '?'} band:${c.band} ch:${c.ch} radio:${c.radio}`
-      : ` linkSpeed:${c.linkSpeed || '?'}`),
-    `gateway:${c.gateway || 'unknown'} samples:${h.length} span:${span} spike_threshold:${lastData.spikeMs || 150}ms ping_target:${lastData.pingTarget || '8.8.8.8'}`,
-    ``,
-    `# stats (rx/tx in Mbps, rssi in dBm, sig in %, ping/gateway/dns/jitter in ms)`,
-    `rx         ${statLine(h.map(p => p.rx))}`,
-    `tx         ${statLine(h.map(p => p.tx))}`,
-    ...(c.connType === 'wifi' ? [
-      `rssi       ${statLine(h.map(p => p.rssi))}`,
-      `sig        ${statLine(h.map(p => p.sig))}`,
-    ] : []),
-    `ping       ${pingVals.length ? statLine(pingVals) : 'n/a'} spikes:${spikeCount} loss:${lossCount}(${lossPct}%)`,
-    `jitter     ${jitterVals.length ? statLine(jitterVals) : 'n/a'}`,
-    `gateway_ms ${gwVals.length ? statLine(gwVals) : 'n/a'} loss:${gwLossCount}`,
-    `dns_ms     ${dnsVals.length ? statLine(dnsVals) : 'n/a'} loss:${dnsLossCount}`,
-    `roams:${roamCount} adapter_errors_total:${adapterErrTotal}`,
-    ``,
-    `# current`,
-    `rx:${c.rx} tx:${c.tx} rssi:${c.rssi} sig:${c.sig} ping:${c.ping ?? 'loss'} jitter:${c.jitter ?? '?'} gw:${c.gatewayMs ?? 'loss'} dns:${c.dnsMs ?? 'loss'} streak:${c.lossStreak}`,
-    ``,
-    bssidChanges.length ? `# ap roam events\n${bssidChanges.join('\n')}\n` : `# no ap roams`,
-    disconnectEvents.length ? `# windows disconnect events\n${disconnectEvents.join('\n')}\n` : `# no windows disconnect events captured`,
-    ``,
-    `# history ts,rx,tx,rssi,sig,ping,pingMin,pingMax,jitter,spike,loss,gatewayMs,gatewayLoss,dnsMs,dnsLoss,lossStreak,bssid,roamed,adapterErrTotal`,
-    ...h.map(p => {
-      const ae = p.adapterErrors;
-      const aeT = ae ? (ae.rxErrors||0)+(ae.txErrors||0)+(ae.rxDiscards||0)+(ae.txDiscards||0) : 0;
-      return [
-        p.ts, p.rx, p.tx, p.rssi, p.sig,
-        p.ping ?? '', p.pingMin ?? '', p.pingMax ?? '', p.jitter ?? '',
-        p.spike ? 1 : 0, p.loss ? 1 : 0,
-        p.gatewayMs ?? '', p.gatewayLoss ? 1 : 0,
-        p.dnsMs ?? '', p.dnsLoss ? 1 : 0,
-        p.lossStreak ?? 0, p.bssid || '', p.roamed ? 1 : 0, aeT
-      ].join(',');
-    })
-  ];
-
-  const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `wifi-report-${ts.slice(0,19).replace(/:/g,'-')}.txt`;
-  a.click();
-  URL.revokeObjectURL(a.href);
+  downloadReportFor(lastData);
 }
 
 function updateChartTheme() {
@@ -1537,51 +1413,6 @@ function updateChartTheme() {
     chart.update('none');
   });
 }
-
-// ── Theme picker ────────────────────────────────────────────────
-const THEMES = [
-  { id: 'midnight',   name: 'Midnight',   bg: '#0d0f12', surface: '#13161b', accent: '#3b82f6' },
-  { id: 'dusk',       name: 'Dusk',       bg: '#171e2d', surface: '#1e2740', accent: '#3bb8c8' },
-  { id: 'ember',      name: 'Ember',      bg: '#140e0b', surface: '#1e1511', accent: '#e07548' },
-  { id: 'daylight',   name: 'Daylight',   bg: '#f0f2f6', surface: '#ffffff', accent: '#3b82f6' },
-  { id: 'arctic',     name: 'Arctic',     bg: '#e0eff8', surface: '#f2f9fc', accent: '#1a8fb0' },
-  { id: 'sakura',     name: 'Sakura',     bg: '#fdf0f4', surface: '#ffffff', accent: '#c83868' },
-  { id: 'lavender',   name: 'Lavender',   bg: '#f2eef8', surface: '#faf8ff', accent: '#7048c8' },
-  { id: 'terracotta', name: 'Terracotta', bg: '#fdf4ee', surface: '#fffaf6', accent: '#2ab098' },
-];
-
-function buildThemePicker() {
-  document.getElementById('theme-menu').innerHTML = THEMES.map(t => `
-    <div class="theme-swatch" id="swatch-${t.id}" onclick="setTheme('${t.id}')">
-      <div class="swatch-preview">
-        <div class="swatch-bg"     style="background:${t.bg}"></div>
-        <div class="swatch-bottom">
-          <div class="swatch-surface" style="background:${t.surface}"></div>
-          <div class="swatch-accent"  style="background:${t.accent}"></div>
-        </div>
-      </div>
-      <div class="swatch-label">${t.name}</div>
-    </div>`).join('');
-}
-
-function setTheme(id) {
-  document.documentElement.setAttribute('data-theme', id);
-  localStorage.setItem('wfm-theme', id);
-  document.querySelectorAll('.theme-swatch').forEach(el => el.classList.remove('active'));
-  const s = document.getElementById('swatch-' + id);
-  if (s) s.classList.add('active');
-  document.getElementById('theme-menu').classList.remove('open');
-  updateChartTheme();
-}
-
-function toggleThemePicker(e) {
-  e.stopPropagation();
-  document.getElementById('theme-menu').classList.toggle('open');
-}
-
-document.addEventListener('click', () => {
-  document.getElementById('theme-menu').classList.remove('open');
-});
 
 buildThemePicker();
 setTheme(localStorage.getItem('wfm-theme') || 'midnight');

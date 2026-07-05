@@ -9,6 +9,7 @@ $watchScript    = Join-Path $scriptDir "watch.ps1"
 $trafficScript  = Join-Path $scriptDir "traffic-watch.ps1"
 $wifiDataFile   = Join-Path $scriptDir "data\wifi-data.json"
 $trafficDataFile = Join-Path $scriptDir "data\traffic-data.json"
+$sessionsDir    = Join-Path $scriptDir "sessions"
 $staleThresholdSec = 30   # both collectors poll every 2-3s; a longer silence means a hang, not just a slow cycle
 $port           = 8765
 $url            = "http://localhost:$port/dashboard.html"
@@ -31,6 +32,76 @@ Get-WmiObject Win32_Process -Filter "Name='powershell.exe'" |
     } |
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 
+# Archive the outgoing session (if any) into sessions/ before wiping the live
+# data files, so PDR 1 (session history) and PDR 8 (cross-session insights)
+# have something to read. Best-effort: a missing/malformed prior data file
+# must never block the new session from starting.
+function Save-OutgoingSession {
+    try {
+        if (-not (Test-Path $wifiDataFile)) { return }
+        $wifi = Get-Content $wifiDataFile -Raw | ConvertFrom-Json
+        if (-not $wifi.history -or $wifi.history.Count -lt 5) { return }
+
+        if (-not (Test-Path $sessionsDir)) {
+            New-Item -ItemType Directory -Path $sessionsDir -Force | Out-Null
+        }
+
+        $points = $wifi.history
+        $start  = [DateTimeOffset]::FromUnixTimeSeconds([int64]$points[0].ts).LocalDateTime
+        $end    = [DateTimeOffset]::FromUnixTimeSeconds([int64]$points[-1].ts).LocalDateTime
+        $stamp  = $start.ToString("yyyy-MM-ddTHH-mm-ss")
+
+        $trafficHistory = @()
+        if (Test-Path $trafficDataFile) {
+            try {
+                $traffic = Get-Content $trafficDataFile -Raw | ConvertFrom-Json
+                if ($traffic.history) { $trafficHistory = $traffic.history }
+            } catch { }
+        }
+
+        $session = [ordered]@{
+            updated        = $wifi.updated
+            pingTarget     = $wifi.pingTarget
+            spikeMs        = $wifi.spikeMs
+            history        = $points
+            trafficHistory = $trafficHistory
+        }
+        $session | ConvertTo-Json -Depth 12 -Compress |
+            Out-File -FilePath (Join-Path $sessionsDir "$stamp.json") -Encoding UTF8 -NoNewline
+
+        $pings   = @($points | Where-Object { $_.ping -ne $null })
+        $rssis   = @($points | Where-Object { $_.rssi -ne $null })
+        $lossCount  = @($points | Where-Object { $_.loss }).Count
+        $spikeCount = @($points | Where-Object { $_.spike }).Count
+        $roamCount  = @($points | Where-Object { $_.roamed }).Count
+        $connTypeBreakdown = @{}
+        foreach ($p in $points) {
+            $ct = if ($p.connType) { $p.connType } else { 'unknown' }
+            $connTypeBreakdown[$ct] = ($connTypeBreakdown[$ct] + 1)
+        }
+
+        $summary = [ordered]@{
+            filename           = "$stamp.json"
+            start              = $start.ToString("o")
+            duration           = [int]($end - $start).TotalSeconds
+            pointCount         = $points.Count
+            avgPing            = if ($pings.Count)  { [math]::Round((($pings   | Measure-Object -Property ping -Sum).Sum / $pings.Count), 1) } else { $null }
+            avgSignal          = if ($rssis.Count)   { [math]::Round((($rssis  | Measure-Object -Property rssi -Sum).Sum / $rssis.Count), 1) } else { $null }
+            lossCount          = $lossCount
+            spikeCount         = $spikeCount
+            roamCount          = $roamCount
+            connTypeBreakdown  = $connTypeBreakdown
+        }
+        $summary | ConvertTo-Json -Depth 5 -Compress |
+            Out-File -FilePath (Join-Path $sessionsDir "$stamp.summary.json") -Encoding UTF8 -NoNewline
+
+        Write-Log "Archived session $stamp.json ($($points.Count) points, $lossCount losses, $spikeCount spikes)"
+    } catch {
+        Write-Log "Session archive failed: $($_.Exception.Message)"
+    }
+}
+Save-OutgoingSession
+
 # Clear stale data from the previous session before anything else starts,
 # so the browser never sees old timestamps on a fresh open.
 '{}' | Out-File -FilePath (Join-Path $scriptDir "data\wifi-data.json")   -Encoding UTF8 -NoNewline
@@ -45,6 +116,7 @@ $httpRunspace.Open()
 $httpRunspace.SessionStateProxy.SetVariable('scriptDir', $scriptDir)
 $httpRunspace.SessionStateProxy.SetVariable('port', $port)
 $httpRunspace.SessionStateProxy.SetVariable('syncHash', $syncHash)
+$httpRunspace.SessionStateProxy.SetVariable('sessionsDir', $sessionsDir)
 
 $httpScript = {
     $mimeMap = @{
@@ -73,6 +145,77 @@ $httpScript = {
             if ($reqPath -eq 'heartbeat') {
                 $syncHash.LastHeartbeat = [DateTime]::Now
                 $res.StatusCode = 204
+                $res.OutputStream.Close()
+                continue
+            }
+
+            # -- Session history / insights endpoints (PDR 1 / PDR 8) --
+            if ($reqPath -eq 'sessions' -or $reqPath.StartsWith('sessions/')) {
+                $sessionName = if ($reqPath -eq 'sessions') { '' } else { $reqPath.Substring('sessions/'.Length) }
+
+                if ($req.HttpMethod -eq 'GET' -and $sessionName -eq '') {
+                    # List all sessions from their summary files, newest first.
+                    $list = @()
+                    if (Test-Path $sessionsDir) {
+                        Get-ChildItem -Path $sessionsDir -Filter '*.summary.json' | Sort-Object Name -Descending | ForEach-Object {
+                            try { $list += (Get-Content $_.FullName -Raw | ConvertFrom-Json) } catch { }
+                        }
+                    }
+                    # ConvertTo-Json collapses a 1-element array into a bare object instead of
+                    # a JSON array, which would break the frontend's Array methods — force array
+                    # syntax explicitly rather than relying on -AsArray (not present on PS 5.1).
+                    $json = if ($list.Count -eq 0) { '[]' }
+                            elseif ($list.Count -eq 1) { '[' + ($list[0] | ConvertTo-Json -Depth 5 -Compress) + ']' }
+                            else { $list | ConvertTo-Json -Depth 5 -Compress }
+                    $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
+                    $res.ContentType = 'application/json'
+                    $res.ContentLength64 = $bytes.Length
+                    $res.OutputStream.Write($bytes, 0, $bytes.Length)
+                    $res.OutputStream.Close()
+                    continue
+                }
+
+                if ($req.HttpMethod -eq 'DELETE' -and $sessionName -eq '') {
+                    # Delete all sessions.
+                    if (Test-Path $sessionsDir) {
+                        Get-ChildItem -Path $sessionsDir -Filter '*.json' | Remove-Item -Force -ErrorAction SilentlyContinue
+                    }
+                    $res.StatusCode = 204
+                    $res.OutputStream.Close()
+                    continue
+                }
+
+                # Path-traversal guard: resolved path must stay inside sessionsDir.
+                $sessionPath = [System.IO.Path]::GetFullPath((Join-Path $sessionsDir $sessionName))
+                if (-not $sessionPath.StartsWith($sessionsDir)) {
+                    $res.StatusCode = 403
+                    $res.OutputStream.Close()
+                    continue
+                }
+
+                if ($req.HttpMethod -eq 'GET') {
+                    if (Test-Path $sessionPath -PathType Leaf) {
+                        $bytes = [System.IO.File]::ReadAllBytes($sessionPath)
+                        $res.ContentType = 'application/json'
+                        $res.ContentLength64 = $bytes.Length
+                        $res.OutputStream.Write($bytes, 0, $bytes.Length)
+                    } else {
+                        $res.StatusCode = 404
+                    }
+                    $res.OutputStream.Close()
+                    continue
+                }
+
+                if ($req.HttpMethod -eq 'DELETE') {
+                    Remove-Item -Path $sessionPath -Force -ErrorAction SilentlyContinue
+                    $summaryPath = $sessionPath -replace '\.json$', '.summary.json'
+                    Remove-Item -Path $summaryPath -Force -ErrorAction SilentlyContinue
+                    $res.StatusCode = 204
+                    $res.OutputStream.Close()
+                    continue
+                }
+
+                $res.StatusCode = 405
                 $res.OutputStream.Close()
                 continue
             }
@@ -170,10 +313,16 @@ $tray.BalloonTipText  = "Double-click the tray icon to open the dashboard."
 $tray.BalloonTipIcon  = [System.Windows.Forms.ToolTipIcon]::Info
 $tray.ShowBalloonTip(4000)
 
-# Shut down when the browser tab has been closed for >60 seconds.
+# Shut down when the browser tab has been closed for a while.
+# Threshold is generous (not 60s) because backgrounding a tab — switching to
+# another window/tab without closing it — makes Chrome/Edge throttle its
+# setInterval heartbeat down to as little as once a minute, or suspend it
+# entirely; a tight timeout would kill the monitor while the tab is still
+# open just because the user tabbed away.
 # Sleep detection: if the timer fires but wall-clock time jumped by more than
 # 60s, the system was asleep — reset the heartbeat so a sleep never looks like
 # a closed tab.
+$heartbeatTimeoutSec = 300
 $script:lastTick = [DateTime]::Now
 $heartbeatTimer = New-Object System.Windows.Forms.Timer
 $heartbeatTimer.Interval = 10000
@@ -189,7 +338,7 @@ $heartbeatTimer.add_Tick({
     }
 
     $age = ($now - $syncHash.LastHeartbeat).TotalSeconds
-    if ($age -gt 60) {
+    if ($age -gt $heartbeatTimeoutSec) {
         Write-Log "Heartbeat timeout ($([int]$age)s) - shutting down"
         $script:watchProc   | Stop-Process -Force -ErrorAction SilentlyContinue
         $script:trafficProc | Stop-Process -Force -ErrorAction SilentlyContinue

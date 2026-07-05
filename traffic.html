@@ -575,6 +575,8 @@
     <nav style="display:flex;align-items:center;gap:4px">
       <a href="dashboard.html" style="font-family:'IBM Plex Sans',sans-serif;font-size:14px;font-weight:400;color:var(--muted);text-decoration:none;padding:6px 12px;border-radius:4px;transition:background .15s,color .15s" onmouseover="this.style.background='var(--border)';this.style.color='var(--text)'" onmouseout="this.style.background='transparent';this.style.color='var(--muted)'">Signal</a>
       <a href="traffic.html"   style="font-family:'IBM Plex Sans',sans-serif;font-size:14px;font-weight:500;color:var(--text);text-decoration:none;padding:6px 12px;border-radius:4px;background:var(--border)">Traffic</a>
+      <a href="history.html"   style="font-family:'IBM Plex Sans',sans-serif;font-size:14px;font-weight:400;color:var(--muted);text-decoration:none;padding:6px 12px;border-radius:4px;transition:background .15s,color .15s" onmouseover="this.style.background='var(--border)';this.style.color='var(--text)'" onmouseout="this.style.background='transparent';this.style.color='var(--muted)'">History</a>
+      <a href="insights.html"  style="font-family:'IBM Plex Sans',sans-serif;font-size:14px;font-weight:400;color:var(--muted);text-decoration:none;padding:6px 12px;border-radius:4px;transition:background .15s,color .15s" onmouseover="this.style.background='var(--border)';this.style.color='var(--text)'" onmouseout="this.style.background='transparent';this.style.color='var(--muted)'">Insights</a>
     </nav>
   </div>
   <div style="display:flex;align-items:center;gap:10px">
@@ -698,6 +700,7 @@
   &nbsp;&nbsp;.\traffic-watch.ps1
 </div>
 
+<script src="shared.js"></script>
 <script>
 // ── Resizable split ─────────────────────────────────────────────
 (function() {
@@ -1241,49 +1244,6 @@ document.querySelector(`.ll-toggle-btn[data-threshold="${llThreshold}"]`)?.class
 poll();
 setInterval(poll, 3000);
 setInterval(() => fetch('/heartbeat').catch(() => {}), 5000);
-
-const THEMES = [
-  { id: 'midnight',   name: 'Midnight',   bg: '#0d0f12', surface: '#13161b', accent: '#3b82f6' },
-  { id: 'dusk',       name: 'Dusk',       bg: '#171e2d', surface: '#1e2740', accent: '#3bb8c8' },
-  { id: 'ember',      name: 'Ember',      bg: '#140e0b', surface: '#1e1511', accent: '#e07548' },
-  { id: 'daylight',   name: 'Daylight',   bg: '#f0f2f6', surface: '#ffffff', accent: '#3b82f6' },
-  { id: 'arctic',     name: 'Arctic',     bg: '#e0eff8', surface: '#f2f9fc', accent: '#1a8fb0' },
-  { id: 'sakura',     name: 'Sakura',     bg: '#fdf0f4', surface: '#ffffff', accent: '#c83868' },
-  { id: 'lavender',   name: 'Lavender',   bg: '#f2eef8', surface: '#faf8ff', accent: '#7048c8' },
-  { id: 'terracotta', name: 'Terracotta', bg: '#fdf4ee', surface: '#fffaf6', accent: '#2ab098' },
-];
-
-function buildThemePicker() {
-  document.getElementById('theme-menu').innerHTML = THEMES.map(t => `
-    <div class="theme-swatch" id="swatch-${t.id}" onclick="setTheme('${t.id}')">
-      <div class="swatch-preview">
-        <div class="swatch-bg"     style="background:${t.bg}"></div>
-        <div class="swatch-bottom">
-          <div class="swatch-surface" style="background:${t.surface}"></div>
-          <div class="swatch-accent"  style="background:${t.accent}"></div>
-        </div>
-      </div>
-      <div class="swatch-label">${t.name}</div>
-    </div>`).join('');
-}
-
-function setTheme(id) {
-  document.documentElement.setAttribute('data-theme', id);
-  localStorage.setItem('wfm-theme', id);
-  document.querySelectorAll('.theme-swatch').forEach(el => el.classList.remove('active'));
-  const s = document.getElementById('swatch-' + id);
-  if (s) s.classList.add('active');
-  document.getElementById('theme-menu').classList.remove('open');
-}
-
-function toggleThemePicker(e) {
-  e.stopPropagation();
-  document.getElementById('theme-menu').classList.toggle('open');
-}
-
-document.addEventListener('click', () => {
-  document.getElementById('theme-menu').classList.remove('open');
-});
 
 buildThemePicker();
 setTheme(localStorage.getItem('wfm-theme') || 'midnight');

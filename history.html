@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PulseNet — History</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap');
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --green: #22c55e; --amber: #f59e0b; --red: #ef4444;
+    --rx: #3b82f6; --tx: #22c55e; --rssi: #f59e0b; --sig: #a78bfa; --ping: #fb923c;
+  }
+  :root, [data-theme="midnight"] { --bg:#0d0f12; --surface:#13161b; --border:#1e2229; --border2:#2a2f38; --text:#e2e6ed; --muted:#8b95a8; --accent:#3b82f6; }
+  [data-theme="dusk"]       { --bg:#171e2d; --surface:#1e2740; --border:#283555; --border2:#344468; --text:#cdd8e8; --muted:#7a8fa8; --accent:#3bb8c8; }
+  [data-theme="ember"]      { --bg:#140e0b; --surface:#1e1511; --border:#2e1f17; --border2:#3e2c22; --text:#ede0d8; --muted:#9a8070; --accent:#e07548; }
+  [data-theme="daylight"]   { --bg:#f0f2f6; --surface:#ffffff; --border:#dde1ea; --border2:#c2c8d4; --text:#111318; --muted:#5a6478; --accent:#3b82f6; }
+  [data-theme="arctic"]     { --bg:#e0eff8; --surface:#f2f9fc; --border:#bcd8ec; --border2:#96c0d8; --text:#0c2030; --muted:#386878; --accent:#1a8fb0; }
+  [data-theme="sakura"]     { --bg:#fdf0f4; --surface:#ffffff; --border:#f0d8e4; --border2:#e0bece; --text:#280e1a; --muted:#885060; --accent:#c83868; }
+  [data-theme="lavender"]   { --bg:#f2eef8; --surface:#faf8ff; --border:#ddd4f0; --border2:#c8bae4; --text:#1c1430; --muted:#685098; --accent:#7048c8; }
+  [data-theme="terracotta"] { --bg:#fdf4ee; --surface:#fffaf6; --border:#f0ddd0; --border2:#e0c8b4; --text:#2a1610; --muted:#7a5040; --accent:#2ab098; }
+
+  body { background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; line-height: 1.5; min-height: 100vh; padding: 24px; }
+  header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+  h1 { font-family: 'IBM Plex Mono', monospace; font-size: 16px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+  .hdr-btn { background: none; border: 1px solid var(--border2); border-radius: 4px; color: var(--text); font-family: 'IBM Plex Mono', monospace; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; padding: 6px 14px; cursor: pointer; transition: color .15s, border-color .15s; }
+  .hdr-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .hdr-btn.danger:hover { border-color: var(--red); color: var(--red); }
+
+  .layout { display: grid; grid-template-columns: 340px 1fr; gap: 16px; align-items: start; }
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 12px; }
+  .panel-title { font-family: 'IBM Plex Mono', monospace; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+
+  .session-row { border: 1px solid var(--border); border-radius: 6px; padding: 10px; margin-bottom: 8px; cursor: pointer; transition: border-color .15s, background .15s; }
+  .session-row:hover { border-color: var(--accent); background: rgba(59,130,246,0.06); }
+  .session-row.active { border-color: var(--accent); background: rgba(59,130,246,0.1); box-shadow: 0 0 0 1px var(--accent); }
+  .session-row .s-date { font-family: 'IBM Plex Mono', monospace; font-size: 13px; display: flex; justify-content: space-between; align-items: center; }
+  .s-viewing { font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--accent); }
+  .session-row .s-stats { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .session-row .s-actions { margin-top: 8px; display: flex; gap: 6px; }
+  .s-actions button { font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: .05em; text-transform: uppercase; padding: 3px 8px; border-radius: 3px; border: 1px solid var(--border2); background: none; color: var(--muted); cursor: pointer; }
+  .s-actions button:hover { color: var(--text); border-color: var(--accent); }
+  .s-actions button.danger:hover { color: var(--red); border-color: var(--red); }
+
+  .empty { color: var(--muted); font-size: 13px; padding: 16px 4px; }
+
+  .cards { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 12px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 14px; }
+  .card-label { font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+  .card-value { font-family: 'IBM Plex Mono', monospace; font-size: 22px; font-weight: 500; }
+
+  .charts { display: grid; grid-template-columns: 1fr; gap: 16px; }
+  .chart-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 16px; min-width: 0; }
+  .chart-title { font-family: 'IBM Plex Mono', monospace; font-size: 13px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: 12px; }
+  canvas { display: block; }
+
+  #event-log { margin-top: 12px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: var(--muted); max-height: 160px; overflow-y: auto; line-height: 1.8; }
+
+  #server-required { display:none; margin-top:24px; padding:16px; background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.2); border-radius:6px; font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--red); line-height:1.7; }
+
+  /* ── Theme picker ──────────────────────────────────────────── */
+  #theme-picker { position: relative; display: inline-block; }
+  #theme-menu {
+    display: none;
+    position: absolute;
+    right: 0;
+    top: calc(100% + 8px);
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    border-radius: 10px;
+    padding: 12px;
+    z-index: 200;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+    width: 296px;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+  }
+  #theme-menu.open { display: grid; }
+  .theme-swatch { cursor: pointer; border-radius: 6px; overflow: hidden; border: 2px solid transparent; transition: border-color .15s, transform .1s; }
+  .theme-swatch:hover  { border-color: var(--accent); transform: scale(1.04); }
+  .theme-swatch.active { border-color: var(--accent); }
+  .swatch-preview { height: 44px; display: flex; flex-direction: column; }
+  .swatch-bg      { flex: 1; }
+  .swatch-bottom  { height: 13px; display: flex; }
+  .swatch-surface { flex: 1; }
+  .swatch-accent  { width: 36%; }
+  .swatch-label { font-family: 'IBM Plex Mono', monospace; font-size: 8px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); text-align: center; padding: 3px 2px 4px; background: var(--surface); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+</style>
+<script>
+  (function(){ var t=localStorage.getItem('wfm-theme'); if(t) document.documentElement.setAttribute('data-theme',t); })();
+</script>
+</head>
+<body>
+
+<header>
+  <div style="display:flex;align-items:center;gap:0">
+    <h1>PulseNet</h1>
+    <div style="width:1px;height:18px;background:var(--border2);margin:0 20px"></div>
+    <nav style="display:flex;align-items:center;gap:4px">
+      <a href="dashboard.html" style="font-family:'IBM Plex Sans',sans-serif;font-size:14px;font-weight:400;color:var(--muted);text-decoration:none;padding:6px 12px;border-radius:4px;transition:background .15s,color .15s" onmouseover="this.style.background='var(--border)';this.style.color='var(--text)'" onmouseout="this.style.background='transparent';this.style.color='var(--muted)'">Signal</a>
+      <a href="traffic.html"   style="font-family:'IBM Plex Sans',sans-serif;font-size:14px;font-weight:400;color:var(--muted);text-decoration:none;padding:6px 12px;border-radius:4px;transition:background .15s,color .15s" onmouseover="this.style.background='var(--border)';this.style.color='var(--text)'" onmouseout="this.style.background='transparent';this.style.color='var(--muted)'">Traffic</a>
+      <a href="history.html"   style="font-family:'IBM Plex Sans',sans-serif;font-size:14px;font-weight:500;color:var(--text);text-decoration:none;padding:6px 12px;border-radius:4px;background:var(--border)">History</a>
+      <a href="insights.html"  style="font-family:'IBM Plex Sans',sans-serif;font-size:14px;font-weight:400;color:var(--muted);text-decoration:none;padding:6px 12px;border-radius:4px;transition:background .15s,color .15s" onmouseover="this.style.background='var(--border)';this.style.color='var(--text)'" onmouseout="this.style.background='transparent';this.style.color='var(--muted)'">Insights</a>
+    </nav>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px">
+    <div id="theme-picker">
+      <button class="hdr-btn" onclick="toggleThemePicker(event)">Theme ▾</button>
+      <div id="theme-menu"></div>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <div class="panel">
+    <div class="panel-title">
+      <span>Sessions</span>
+      <button class="hdr-btn danger" style="padding:3px 8px;font-size:10px" onclick="deleteAllSessions()">Delete all</button>
+    </div>
+    <div id="session-list"><div class="empty">Loading…</div></div>
+  </div>
+
+  <div class="panel" id="detail-panel">
+    <div class="empty">Select a session from the list to view its charts.</div>
+  </div>
+</div>
+
+<div id="server-required">
+  <strong>The local server is required to browse session history.</strong><br><br>
+  Open this page via <strong>http://localhost:8765/history.html</strong> (double-click Start-PulseNet.bat if it isn't running) rather than opening the file directly.
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="shared.js"></script>
+<script>
+function cssVar(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+function timeFmt(ts) { return new Date(ts * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
+function dateFmt(iso) { return new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }); }
+function durFmt(sec) {
+  if (sec == null) return '—';
+  const m = Math.floor(sec / 60), s = sec % 60;
+  return m > 0 ? `${m}m ${s}s` : `${s}s`;
+}
+
+let sessions = [];
+let activeFile = null;
+let charts = null;
+
+async function loadSessions() {
+  try {
+    const r = await fetch('sessions?t=' + Date.now());
+    if (!r.ok) throw new Error('bad response');
+    sessions = await r.json();
+  } catch (e) {
+    document.getElementById('server-required').style.display = 'block';
+    document.getElementById('session-list').innerHTML = '';
+    return;
+  }
+  renderSessionList();
+
+  const params = new URLSearchParams(location.search);
+  const wanted = params.get('file');
+  if (wanted && sessions.some(s => s.filename === wanted)) {
+    loadSession(wanted);
+  } else if (sessions.length) {
+    // No session requested via deep link — default to the most recent one
+    // (list is already sorted newest-first) so the tab isn't empty on open.
+    loadSession(sessions[0].filename);
+  }
+}
+
+function renderSessionList() {
+  const el = document.getElementById('session-list');
+  if (!sessions.length) { el.innerHTML = '<div class="empty">No saved sessions yet. Sessions are archived automatically each time the monitor restarts.</div>'; return; }
+  el.innerHTML = sessions.map(s => `
+    <div class="session-row ${s.filename === activeFile ? 'active' : ''}" data-file="${s.filename}">
+      <div class="s-date">${dateFmt(s.start)} ${s.filename === activeFile ? '<span class="s-viewing">● Viewing</span>' : ''}</div>
+      <div class="s-stats">${durFmt(s.duration)} &middot; avg ping ${s.avgPing ?? '—'}ms &middot; ${s.lossCount ?? 0} loss &middot; ${s.spikeCount ?? 0} spike &middot; sig ${s.avgSignal ?? '—'}</div>
+      <div class="s-actions">
+        <button onclick="event.stopPropagation();downloadSession('${s.filename}')">Download</button>
+        <button class="danger" onclick="event.stopPropagation();deleteSession('${s.filename}')">Delete</button>
+      </div>
+    </div>`).join('');
+  el.querySelectorAll('.session-row').forEach(row => {
+    row.addEventListener('click', () => loadSession(row.dataset.file));
+  });
+}
+
+async function loadSession(filename) {
+  activeFile = filename;
+  renderSessionList();
+  history.replaceState(null, '', '?file=' + encodeURIComponent(filename));
+  try {
+    const r = await fetch('sessions/' + encodeURIComponent(filename));
+    if (!r.ok) throw new Error('not found');
+    const data = await r.json();
+    renderDetail(filename, data);
+  } catch (e) {
+    document.getElementById('detail-panel').innerHTML = '<div class="empty">Could not load this session — it may have been deleted.</div>';
+  }
+}
+
+async function downloadSession(filename) {
+  const r = await fetch('sessions/' + encodeURIComponent(filename));
+  const data = await r.json();
+  downloadReportFor(data);
+}
+
+async function deleteSession(filename) {
+  if (!confirm('Delete this session? This cannot be undone.')) return;
+  await fetch('sessions/' + encodeURIComponent(filename), { method: 'DELETE' });
+  if (activeFile === filename) {
+    activeFile = null;
+    document.getElementById('detail-panel').innerHTML = '<div class="empty">Select a session from the list to view its charts.</div>';
+  }
+  loadSessions();
+}
+
+async function deleteAllSessions() {
+  if (!confirm('Delete ALL saved sessions? This cannot be undone.')) return;
+  await fetch('sessions', { method: 'DELETE' });
+  activeFile = null;
+  document.getElementById('detail-panel').innerHTML = '<div class="empty">Select a session from the list to view its charts.</div>';
+  loadSessions();
+}
+
+function destroyCharts() {
+  if (!charts) return;
+  Object.values(charts).forEach(c => c.destroy());
+  charts = null;
+}
+
+function makeStaticChart(canvas, datasets, yOptions) {
+  const tick = cssVar('--muted'), grid = cssVar('--border');
+  return new Chart(canvas, {
+    type: 'line',
+    data: { datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false, callbacks: { title: items => items.length ? timeFmt(items[0].parsed.x) : '' } } },
+      scales: {
+        x: { type: 'linear', ticks: { color: tick, font: { family: "'IBM Plex Mono'", size: 11 }, callback: v => timeFmt(v) }, grid: { color: grid } },
+        y: Object.assign({ ticks: { color: tick, font: { family: "'IBM Plex Mono'", size: 11 } }, grid: { color: grid } }, yOptions || {})
+      }
+    }
+  });
+}
+
+function renderDetail(filename, data) {
+  destroyCharts();
+  const h = data.history || [];
+  const c = data.current || h[h.length - 1] || {};
+  window.lastSessionTraffic = data.trafficHistory || [];
+
+  const pings = h.filter(p => p.ping != null && !p.loss).map(p => p.ping);
+  const sigs  = h.filter(p => p.rssi != null).map(p => p.rssi);
+  const lossCount  = h.filter(p => p.loss).length;
+  const spikeCount = h.filter(p => p.spike).length;
+  const avgPing = pings.length ? (pings.reduce((a,b)=>a+b,0)/pings.length).toFixed(1) : '—';
+  const avgSig  = sigs.length  ? (sigs.reduce((a,b)=>a+b,0)/sigs.length).toFixed(1)   : '—';
+
+  document.getElementById('detail-panel').innerHTML = `
+    <div class="panel-title">
+      <span>${filename}</span>
+      <button class="hdr-btn" style="padding:4px 10px;font-size:11px" onclick="downloadSession('${filename}')">&#8675; Download Report</button>
+    </div>
+    <div class="cards">
+      <div class="card"><div class="card-label">Points</div><div class="card-value">${h.length}</div></div>
+      <div class="card"><div class="card-label">Avg ping</div><div class="card-value">${avgPing}<span style="font-size:12px;color:var(--muted)">ms</span></div></div>
+      <div class="card"><div class="card-label">Avg signal</div><div class="card-value">${avgSig}<span style="font-size:12px;color:var(--muted)">dBm</span></div></div>
+      <div class="card"><div class="card-label">Loss events</div><div class="card-value">${lossCount}</div></div>
+      <div class="card"><div class="card-label">Spike events</div><div class="card-value">${spikeCount}</div></div>
+    </div>
+    <div class="charts">
+      <div class="chart-wrap"><div class="chart-title">Link rate (Mbps)</div><div style="position:relative;height:160px"><canvas id="h-rate"></canvas></div></div>
+      <div class="chart-wrap"><div class="chart-title">Signal (dBm / %)</div><div style="position:relative;height:150px"><canvas id="h-sig"></canvas></div></div>
+      <div class="chart-wrap"><div class="chart-title">Latency & packet loss (ms)</div><div style="position:relative;height:160px"><canvas id="h-ping"></canvas></div></div>
+    </div>
+    <div id="event-log"></div>
+  `;
+
+  charts = {
+    rate: makeStaticChart(document.getElementById('h-rate'), [
+      { label: 'Download', data: h.map(p => ({ x: p.ts, y: p.rx ?? null })), borderColor: '#3b82f6', backgroundColor: 'rgba(59,130,246,0.06)', tension: 0.3, pointRadius: 0, borderWidth: 1.5, fill: true },
+      { label: 'Upload',   data: h.map(p => ({ x: p.ts, y: p.tx ?? null })), borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.06)', tension: 0.3, pointRadius: 0, borderDash: [4,3], borderWidth: 1.5, fill: true }
+    ]),
+    sig: makeStaticChart(document.getElementById('h-sig'), [
+      { label: 'RSSI', data: h.map(p => ({ x: p.ts, y: p.rssi ?? null })), borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.06)', tension: 0.3, pointRadius: 0, borderWidth: 1.5, fill: true },
+      { label: 'Signal %', data: h.map(p => ({ x: p.ts, y: p.sig ?? null })), borderColor: '#a78bfa', backgroundColor: 'rgba(167,139,250,0.06)', tension: 0.3, pointRadius: 0, borderDash: [4,3], borderWidth: 1.5, fill: true, yAxisID: 'y2' }
+    ]),
+    ping: makeStaticChart(document.getElementById('h-ping'), [
+      { label: 'Ping', data: h.map(p => ({ x: p.ts, y: p.loss ? null : (p.ping ?? null) })), borderColor: '#fb923c', backgroundColor: 'rgba(251,146,60,0.06)', tension: 0.3, pointRadius: h.map(p => (p.spike||p.loss||p.roamed)?4:0), pointBackgroundColor: h.map(p => p.loss ? '#ef4444' : p.roamed ? '#94a3b8' : p.spike ? '#f59e0b' : '#fb923c'), borderWidth: 1.5, fill: true },
+      { label: 'Jitter', data: h.map(p => ({ x: p.ts, y: p.loss ? null : (p.jitter ?? null) })), borderColor: '#ec4899', backgroundColor: 'transparent', tension: 0.3, pointRadius: 0, borderWidth: 1, borderDash: [3,3] },
+      { label: 'Loss', data: h.filter(p => p.loss).map(p => ({ x: p.ts, y: 0 })), showLine: false, pointRadius: 5, pointBackgroundColor: '#ef4444', pointBorderColor: '#ef4444' }
+    ])
+  };
+
+  const events = h.filter(p => p.loss || p.spike || p.roamed);
+  const log = document.getElementById('event-log');
+  if (!events.length) {
+    log.innerHTML = '<span style="color:var(--green)">No loss, spike, or roam events in this session.</span>';
+  } else {
+    log.innerHTML = events.slice(-200).map(p => {
+      const tag = p.loss ? '<span style="color:var(--red)">[LOSS]</span>' : p.spike ? '<span style="color:var(--amber)">[SPIKE]</span>' : '<span style="color:#94a3b8">[ROAM]</span>';
+      const verdict = diagnose(p);
+      const diagLine = verdict ? `<br><span style="color:var(--muted);font-size:10px;padding-left:2px">↳ ${verdict}</span>` : '';
+      const snap = nearestTrafficSnapshot(window.lastSessionTraffic, p.ts);
+      let trafficLine = '';
+      if (snap && ((snap.topApps && snap.topApps.length) || (snap.topHosts && snap.topHosts.length))) {
+        const app  = snap.topApps[0]  ? `${snap.topApps[0].name} (${snap.topApps[0].pct}%)`  : null;
+        const host = snap.topHosts[0] ? `${snap.topHosts[0].name} (${snap.topHosts[0].pct}%)` : null;
+        const bits = [app && `top app: ${app}`, host && `top host: ${host}`].filter(Boolean);
+        if (bits.length) trafficLine = `<br><span style="color:var(--muted);font-size:10px;padding-left:2px">&#8942; ${bits.join(' &middot; ')}</span>`;
+      }
+      return `${timeFmt(p.ts)} ${tag}${diagLine}${trafficLine}`;
+    }).join('<br>');
+  }
+}
+
+function updateChartTheme() {
+  if (!charts) return;
+  const tick = cssVar('--muted');
+  const grid = cssVar('--border');
+  Object.values(charts).forEach(chart => {
+    Object.values(chart.options.scales).forEach(scale => {
+      if (scale.ticks)                     scale.ticks.color = tick;
+      if (scale.grid?.color !== undefined) scale.grid.color  = grid;
+    });
+    chart.update('none');
+  });
+}
+
+buildThemePicker();
+setTheme(localStorage.getItem('wfm-theme') || 'midnight');
+loadSessions();
+</script>
+</body>
+</html>

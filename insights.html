@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PulseNet — Insights</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap');
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --green: #22c55e; --amber: #f59e0b; --red: #ef4444;
+    --rx: #3b82f6; --tx: #22c55e; --rssi: #f59e0b; --sig: #a78bfa; --ping: #fb923c;
+  }
+  :root, [data-theme="midnight"] { --bg:#0d0f12; --surface:#13161b; --border:#1e2229; --border2:#2a2f38; --text:#e2e6ed; --muted:#8b95a8; --accent:#3b82f6; }
+  [data-theme="dusk"]       { --bg:#171e2d; --surface:#1e2740; --border:#283555; --border2:#344468; --text:#cdd8e8; --muted:#7a8fa8; --accent:#3bb8c8; }
+  [data-theme="ember"]      { --bg:#140e0b; --surface:#1e1511; --border:#2e1f17; --border2:#3e2c22; --text:#ede0d8; --muted:#9a8070; --accent:#e07548; }
+  [data-theme="daylight"]   { --bg:#f0f2f6; --surface:#ffffff; --border:#dde1ea; --border2:#c2c8d4; --text:#111318; --muted:#5a6478; --accent:#3b82f6; }
+  [data-theme="arctic"]     { --bg:#e0eff8; --surface:#f2f9fc; --border:#bcd8ec; --border2:#96c0d8; --text:#0c2030; --muted:#386878; --accent:#1a8fb0; }
+  [data-theme="sakura"]     { --bg:#fdf0f4; --surface:#ffffff; --border:#f0d8e4; --border2:#e0bece; --text:#280e1a; --muted:#885060; --accent:#c83868; }
+  [data-theme="lavender"]   { --bg:#f2eef8; --surface:#faf8ff; --border:#ddd4f0; --border2:#c8bae4; --text:#1c1430; --muted:#685098; --accent:#7048c8; }
+  [data-theme="terracotta"] { --bg:#fdf4ee; --surface:#fffaf6; --border:#f0ddd0; --border2:#e0c8b4; --text:#2a1610; --muted:#7a5040; --accent:#2ab098; }
+
+  body { background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans', sans-serif; font-size: 14px; line-height: 1.5; min-height: 100vh; padding: 24px; }
+  header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+  h1 { font-family: 'IBM Plex Mono', monospace; font-size: 16px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 16px; min-width: 0; }
+  .panel.wide { grid-column: 1 / -1; }
+  .panel-title { font-family: 'IBM Plex Mono', monospace; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: 12px; }
+
+  .empty { color: var(--muted); font-size: 13px; padding: 40px 16px; text-align: center; }
+
+  .stack-bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; font-family: 'IBM Plex Mono', monospace; font-size: 12px; }
+  .stack-bar-label { width: 90px; flex-shrink: 0; color: var(--muted); }
+  .stack-bar-track { flex: 1; height: 16px; border-radius: 3px; overflow: hidden; display: flex; background: var(--border); }
+  .stack-bar-count { width: 40px; text-align: right; flex-shrink: 0; }
+
+  table { width: 100%; border-collapse: collapse; font-family: 'IBM Plex Mono', monospace; font-size: 12px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 400; text-transform: uppercase; letter-spacing: 0.06em; font-size: 11px; }
+  tr.clickable { cursor: pointer; }
+  tr.clickable:hover { background: rgba(59,130,246,0.06); }
+
+  .rank-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border); font-family: 'IBM Plex Mono', monospace; font-size: 12px; }
+  .rank-row .count { color: var(--muted); }
+
+  canvas { display: block; }
+
+  /* ── Theme picker ──────────────────────────────────────────── */
+  #theme-picker { position: relative; display: inline-block; }
+  #theme-menu {
+    display: none;
+    position: absolute;
+    right: 0;
+    top: calc(100% + 8px);
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    border-radius: 10px;
+    padding: 12px;
+    z-index: 200;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+    width: 296px;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+  }
+  #theme-menu.open { display: grid; }
+  .theme-swatch { cursor: pointer; border-radius: 6px; overflow: hidden; border: 2px solid transparent; transition: border-color .15s, transform .1s; }
+  .theme-swatch:hover  { border-color: var(--accent); transform: scale(1.04); }
+  .theme-swatch.active { border-color: var(--accent); }
+  .swatch-preview { height: 44px; display: flex; flex-direction: column; }
+  .swatch-bg      { flex: 1; }
+  .swatch-bottom  { height: 13px; display: flex; }
+  .swatch-surface { flex: 1; }
+  .swatch-accent  { width: 36%; }
+  .swatch-label { font-family: 'IBM Plex Mono', monospace; font-size: 8px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); text-align: center; padding: 3px 2px 4px; background: var(--surface); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hdr-btn { background: none; border: 1px solid var(--border2); border-radius: 4px; color: var(--text); font-family: 'IBM Plex Mono', monospace; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; padding: 6px 14px; cursor: pointer; transition: color .15s, border-color .15s; }
+  .hdr-btn:hover { border-color: var(--accent); color: var(--accent); }
+</style>
+<script>
+  (function(){ var t=localStorage.getItem('wfm-theme'); if(t) document.documentElement.setAttribute('data-theme',t); })();
+</script>
+</head>
+<body>
+
+<header>
+  <div style="display:flex;align-items:center;gap:0">
+    <h1>PulseNet</h1>
+    <div style="width:1px;height:18px;background:var(--border2);margin:0 20px"></div>
+    <nav style="display:flex;align-items:center;gap:4px">
+      <a href="dashboard.html" style="font-family:'IBM Plex Sans',sans-serif;font-size:14px;font-weight:400;color:var(--muted);text-decoration:none;padding:6px 12px;border-radius:4px;transition:background .15s,color .15s" onmouseover="this.style.background='var(--border)';this.style.color='var(--text)'" onmouseout="this.style.background='transparent';this.style.color='var(--muted)'">Signal</a>
+      <a href="traffic.html"   style="font-family:'IBM Plex Sans',sans-serif;font-size:14px;font-weight:400;color:var(--muted);text-decoration:none;padding:6px 12px;border-radius:4px;transition:background .15s,color .15s" onmouseover="this.style.background='var(--border)';this.style.color='var(--text)'" onmouseout="this.style.background='transparent';this.style.color='var(--muted)'">Traffic</a>
+      <a href="history.html"   style="font-family:'IBM Plex Sans',sans-serif;font-size:14px;font-weight:400;color:var(--muted);text-decoration:none;padding:6px 12px;border-radius:4px;transition:background .15s,color .15s" onmouseover="this.style.background='var(--border)';this.style.color='var(--text)'" onmouseout="this.style.background='transparent';this.style.color='var(--muted)'">History</a>
+      <a href="insights.html"  style="font-family:'IBM Plex Sans',sans-serif;font-size:14px;font-weight:500;color:var(--text);text-decoration:none;padding:6px 12px;border-radius:4px;background:var(--border)">Insights</a>
+    </nav>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px">
+    <div id="theme-picker">
+      <button class="hdr-btn" onclick="toggleThemePicker(event)">Theme ▾</button>
+      <div id="theme-menu"></div>
+    </div>
+  </div>
+</header>
+
+<div id="root"><div class="empty">Loading…</div></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="shared.js"></script>
+<script>
+function cssVar(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+const MAX_SESSIONS = 50; // rolling window cap to bound aggregation cost
+
+async function main() {
+  let summaries;
+  try {
+    const r = await fetch('sessions?t=' + Date.now());
+    if (!r.ok) throw new Error('bad response');
+    summaries = await r.json();
+  } catch (e) {
+    document.getElementById('root').innerHTML = '<div class="empty">The local server is required for Insights.<br>Open this page via http://localhost:8765/insights.html.</div>';
+    return;
+  }
+
+  summaries = summaries.slice(0, MAX_SESSIONS);
+
+  if (summaries.length < 2) {
+    document.getElementById('root').innerHTML = '<div class="empty">Not enough session history yet — check back after a few sessions.<br><br><a href="history.html" style="color:var(--accent)">View saved sessions →</a></div>';
+    return;
+  }
+
+  buildLayout();
+
+  // Only sessions with at least one loss/spike are worth fetching in full —
+  // everything else contributes nothing to the event-level widgets.
+  const eventSessions = summaries.filter(s => (s.lossCount || 0) + (s.spikeCount || 0) > 0);
+  const fulls = await Promise.all(eventSessions.map(async s => {
+    try {
+      const r = await fetch('sessions/' + encodeURIComponent(s.filename));
+      if (!r.ok) return null;
+      return { summary: s, data: await r.json() };
+    } catch (e) { return null; }
+  }));
+  const loaded = fulls.filter(Boolean);
+
+  // Flatten every loss/spike point across all loaded sessions, tagged with its session's traffic history.
+  const events = [];
+  for (const { data } of loaded) {
+    const traffic = data.trafficHistory || [];
+    for (const p of (data.history || [])) {
+      if (p.loss || p.spike) events.push({ p, traffic });
+    }
+  }
+
+  renderFrequency(events);
+  renderHourHeatmap(events);
+  renderBreakdown(events);
+  renderTopCorrelated(events);
+  renderSessionTable(summaries);
+}
+
+function buildLayout() {
+  document.getElementById('root').innerHTML = `
+    <div class="grid">
+      <div class="panel"><div class="panel-title">Event frequency over time</div><div style="position:relative;height:200px"><canvas id="freq-chart"></canvas></div></div>
+      <div class="panel"><div class="panel-title">Time of day (loss/spike density)</div><div style="position:relative;height:200px"><canvas id="hour-chart"></canvas></div></div>
+      <div class="panel"><div class="panel-title">Local link vs. WAN vs. router</div><div id="breakdown"></div></div>
+      <div class="panel"><div class="panel-title">Top correlated apps / hosts</div><div id="correlated"></div></div>
+      <div class="panel wide"><div class="panel-title">Sessions</div><div id="session-table"></div></div>
+    </div>`;
+}
+
+function dayKey(ts) { return new Date(ts * 1000).toISOString().slice(0, 10); }
+
+function renderFrequency(events) {
+  const byDay = {};
+  for (const { p } of events) {
+    const k = dayKey(p.ts);
+    byDay[k] = byDay[k] || { loss: 0, spike: 0 };
+    if (p.loss) byDay[k].loss++; else byDay[k].spike++;
+  }
+  const days = Object.keys(byDay).sort();
+  const tick = cssVar('--muted'), grid = cssVar('--border');
+  if (!days.length) { document.getElementById('freq-chart').parentElement.innerHTML = '<div class="empty">No loss or spike events recorded.</div>'; return; }
+  new Chart(document.getElementById('freq-chart'), {
+    type: 'bar',
+    data: {
+      labels: days,
+      datasets: [
+        { label: 'Loss', data: days.map(d => byDay[d].loss), backgroundColor: '#ef4444' },
+        { label: 'Spike', data: days.map(d => byDay[d].spike), backgroundColor: '#f59e0b' }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: { legend: { labels: { color: tick, font: { family: "'IBM Plex Mono'", size: 11 } } } },
+      scales: {
+        x: { stacked: true, ticks: { color: tick, font: { family: "'IBM Plex Mono'", size: 10 } }, grid: { color: grid } },
+        y: { stacked: true, beginAtZero: true, ticks: { color: tick, precision: 0 }, grid: { color: grid } }
+      }
+    }
+  });
+}
+
+function renderHourHeatmap(events) {
+  const buckets = new Array(24).fill(0);
+  for (const { p } of events) buckets[new Date(p.ts * 1000).getHours()]++;
+  const tick = cssVar('--muted'), grid = cssVar('--border');
+  const max = Math.max(...buckets, 1);
+  new Chart(document.getElementById('hour-chart'), {
+    type: 'bar',
+    data: {
+      labels: buckets.map((_, h) => h + 'h'),
+      datasets: [{ data: buckets, backgroundColor: buckets.map(v => `rgba(239,68,68,${0.15 + 0.7 * (v / max)})`) }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: tick, font: { family: "'IBM Plex Mono'", size: 9 }, maxRotation: 0 }, grid: { display: false } },
+        y: { beginAtZero: true, ticks: { color: tick, precision: 0 }, grid: { color: grid } }
+      }
+    }
+  });
+}
+
+function renderBreakdown(events) {
+  const buckets = { local: 0, wan: 0, router: 0, other: 0 };
+  const groups = {
+    local: ['local-link', 'adapter-error', 'weak-signal'],
+    wan: ['wan-issue', 'spike-congestion', 'spike-jitter', 'spike-generic'],
+    router: ['router-down'],
+  };
+  for (const { p } of events) {
+    const cat = classify(p);
+    if (!cat) continue;
+    const bucket = Object.keys(groups).find(k => groups[k].includes(cat)) || 'other';
+    buckets[bucket]++;
+  }
+  const total = Object.values(buckets).reduce((a, b) => a + b, 0);
+  const el = document.getElementById('breakdown');
+  if (!total) { el.innerHTML = '<div class="empty">No classifiable loss/spike events.</div>'; return; }
+  const colors = { local: '#ef4444', wan: '#f59e0b', router: '#a78bfa', other: '#8b95a8' };
+  const labels = { local: 'Local link', wan: 'WAN / ISP', router: 'Router down', other: 'Other' };
+  el.innerHTML = Object.keys(buckets).map(k => {
+    const pct = total ? Math.round((buckets[k] / total) * 100) : 0;
+    return `<div class="stack-bar-row">
+      <div class="stack-bar-label">${labels[k]}</div>
+      <div class="stack-bar-track"><div style="width:${pct}%;background:${colors[k]}"></div></div>
+      <div class="stack-bar-count">${buckets[k]} (${pct}%)</div>
+    </div>`;
+  }).join('');
+}
+
+function renderTopCorrelated(events) {
+  const tally = {};
+  for (const { p, traffic } of events) {
+    const snap = nearestTrafficSnapshot(traffic, p.ts);
+    if (!snap) continue;
+    if (snap.topApps && snap.topApps[0]) {
+      const key = 'app: ' + snap.topApps[0].name;
+      tally[key] = (tally[key] || 0) + 1;
+    }
+    if (snap.topHosts && snap.topHosts[0]) {
+      const key = 'host: ' + snap.topHosts[0].name;
+      tally[key] = (tally[key] || 0) + 1;
+    }
+  }
+  const ranked = Object.entries(tally).sort((a, b) => b[1] - a[1]).slice(0, 10);
+  const el = document.getElementById('correlated');
+  if (!ranked.length) { el.innerHTML = '<div class="empty">No traffic data correlated with loss/spike events yet.</div>'; return; }
+  el.innerHTML = ranked.map(([name, count]) => `<div class="rank-row"><span>${name}</span><span class="count">${count}×</span></div>`).join('');
+}
+
+function renderSessionTable(summaries) {
+  const el = document.getElementById('session-table');
+  el.innerHTML = `<table>
+    <thead><tr><th>Start</th><th>Duration</th><th>Loss</th><th>Spike</th><th>Avg ping</th><th>Health</th></tr></thead>
+    <tbody>${summaries.map(s => {
+      const bad = (s.lossCount || 0) > 0 || (s.spikeCount || 0) > 3;
+      const health = bad ? '<span style="color:var(--red)">issues</span>' : '<span style="color:var(--green)">clean</span>';
+      const dur = s.duration != null ? Math.round(s.duration / 60) + 'm' : '—';
+      return `<tr class="clickable" onclick="location.href='history.html?file=${encodeURIComponent(s.filename)}'">
+        <td>${new Date(s.start).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</td>
+        <td>${dur}</td><td>${s.lossCount ?? 0}</td><td>${s.spikeCount ?? 0}</td>
+        <td>${s.avgPing ?? '—'}ms</td><td>${health}</td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table>`;
+}
+
+buildThemePicker();
+setTheme(localStorage.getItem('wfm-theme') || 'midnight');
+main();
+</script>
+</body>
+</html>
