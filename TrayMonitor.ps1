@@ -7,6 +7,9 @@ Add-Type -AssemblyName System.Drawing
 $scriptDir      = Split-Path -Parent $MyInvocation.MyCommand.Path
 $watchScript    = Join-Path $scriptDir "watch.ps1"
 $trafficScript  = Join-Path $scriptDir "traffic-watch.ps1"
+$wifiDataFile   = Join-Path $scriptDir "data\wifi-data.json"
+$trafficDataFile = Join-Path $scriptDir "data\traffic-data.json"
+$staleThresholdSec = 30   # both collectors poll every 2-3s; a longer silence means a hang, not just a slow cycle
 $port           = 8765
 $url            = "http://localhost:$port/dashboard.html"
 $logFile        = Join-Path $scriptDir "traymonitor.log"
@@ -116,6 +119,18 @@ $script:watchProc   = Start-Hidden $watchScript
 $script:trafficProc = Start-Hidden $trafficScript
 Write-Log "Collectors started (watch PID $($script:watchProc.Id), traffic PID $($script:trafficProc.Id))"
 
+# A collector counts as "just (re)started" for one grace period so we don't flag it
+# stale before its first write has even landed.
+$script:watchStartedAt   = [DateTime]::Now
+$script:trafficStartedAt = [DateTime]::Now
+
+function Test-CollectorStale($dataFile, $startedAt) {
+    if (((Get-Date) - $startedAt).TotalSeconds -lt $staleThresholdSec) { return $false }
+    if (-not (Test-Path $dataFile)) { return $true }
+    $age = ((Get-Date) - (Get-Item $dataFile).LastWriteTime).TotalSeconds
+    return $age -gt $staleThresholdSec
+}
+
 # -- System tray icon --
 $tray         = New-Object System.Windows.Forms.NotifyIcon
 $tray.Icon    = [System.Drawing.SystemIcons]::Network
@@ -192,10 +207,22 @@ $watchdogTimer.add_Tick({
         if ($script:watchProc -and $script:watchProc.HasExited) {
             Write-Log "[watchdog] watch.ps1 exited (code $($script:watchProc.ExitCode)) - restarting"
             $script:watchProc = Start-Hidden $watchScript
+            $script:watchStartedAt = [DateTime]::Now
+        } elseif (Test-CollectorStale $wifiDataFile $script:watchStartedAt) {
+            Write-Log "[watchdog] watch.ps1 output stale (no write in ${staleThresholdSec}s) - killing and restarting"
+            $script:watchProc | Stop-Process -Force -ErrorAction SilentlyContinue
+            $script:watchProc = Start-Hidden $watchScript
+            $script:watchStartedAt = [DateTime]::Now
         }
         if ($script:trafficProc -and $script:trafficProc.HasExited) {
             Write-Log "[watchdog] traffic-watch.ps1 exited (code $($script:trafficProc.ExitCode)) - restarting"
             $script:trafficProc = Start-Hidden $trafficScript
+            $script:trafficStartedAt = [DateTime]::Now
+        } elseif (Test-CollectorStale $trafficDataFile $script:trafficStartedAt) {
+            Write-Log "[watchdog] traffic-watch.ps1 output stale (no write in ${staleThresholdSec}s) - killing and restarting"
+            $script:trafficProc | Stop-Process -Force -ErrorAction SilentlyContinue
+            $script:trafficProc = Start-Hidden $trafficScript
+            $script:trafficStartedAt = [DateTime]::Now
         }
     } catch {
         Write-Log "[watchdog] error: $($_.Exception.Message)"
