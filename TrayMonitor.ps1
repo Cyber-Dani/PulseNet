@@ -4,6 +4,47 @@
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
+# Windows Job Object wrapper: any process assigned to a job created with
+# JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE is terminated the instant the job's last
+# handle closes. Since only this process holds that handle, killing this
+# process by any means (Stop-Process -Force, Task Manager, a crash) closes
+# the handle and the OS cascades the kill to both collectors immediately —
+# unlike Process.Start()'d children, which would otherwise be orphaned.
+Add-Type -Name JobObject -Namespace PulseNet -MemberDefinition @'
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    public static extern IntPtr CreateJobObject(IntPtr a, string lpName);
+    [DllImport("kernel32.dll")]
+    public static extern bool SetInformationJobObject(IntPtr hJob, int JobObjectInfoClass, IntPtr lpJobObjectInfo, uint cbJobObjectInfoLength);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern bool AssignProcessToJobObject(IntPtr hJob, IntPtr hProcess);
+'@
+
+function New-KillOnCloseJob {
+    # JOBOBJECT_EXTENDED_LIMIT_INFORMATION is 144 bytes on 64-bit Windows
+    # (JOBOBJECT_BASIC_LIMIT_INFORMATION's 64 bytes + IO_COUNTERS' 48 bytes +
+    # four trailing SIZE_T fields); only LimitFlags (offset 0x10, value 0x2000
+    # = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE) needs to be non-zero.
+    $job = [PulseNet.JobObject]::CreateJobObject([IntPtr]::Zero, $null)
+    $infoSize = 144
+    $info = [System.Runtime.InteropServices.Marshal]::AllocHGlobal($infoSize)
+    try {
+        for ($i = 0; $i -lt $infoSize; $i++) {
+            [System.Runtime.InteropServices.Marshal]::WriteByte($info, $i, 0)
+        }
+        [System.Runtime.InteropServices.Marshal]::WriteInt32($info, 0x10, 0x2000)
+        [PulseNet.JobObject]::SetInformationJobObject($job, 9, $info, $infoSize) | Out-Null
+    } finally {
+        [System.Runtime.InteropServices.Marshal]::FreeHGlobal($info)
+    }
+    return $job
+}
+
+function Add-ProcessToJob($job, $process) {
+    [PulseNet.JobObject]::AssignProcessToJobObject($job, $process.Handle) | Out-Null
+}
+
+$killOnCloseJob = New-KillOnCloseJob
+
 $scriptDir      = Split-Path -Parent $MyInvocation.MyCommand.Path
 $watchScript    = Join-Path $scriptDir "watch.ps1"
 $trafficScript  = Join-Path $scriptDir "traffic-watch.ps1"
@@ -248,13 +289,18 @@ $httpPipeline.AddScript($httpScript) | Out-Null
 $httpPipeline.BeginInvoke() | Out-Null
 
 # -- Collector processes (no console window) --
+# Every collector (initial start and watchdog restarts alike) goes through
+# here, so assigning it to $killOnCloseJob here covers all of them: if this
+# PowerShell process dies for any reason, Windows kills these along with it.
 function Start-Hidden($script) {
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName  = "powershell.exe"
     $psi.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$script`""
     $psi.WindowStyle    = [System.Diagnostics.ProcessWindowStyle]::Hidden
     $psi.CreateNoWindow = $true
-    return [System.Diagnostics.Process]::Start($psi)
+    $proc = [System.Diagnostics.Process]::Start($psi)
+    Add-ProcessToJob $killOnCloseJob $proc
+    return $proc
 }
 
 Write-Log "PulseNet starting"
