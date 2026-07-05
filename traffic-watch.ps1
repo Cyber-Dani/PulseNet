@@ -27,6 +27,11 @@ $sessionTx     = 0
 $appBytes      = @{}   # appName -> {rx, tx} session cumulative (estimated)
 $hostBytes     = @{}   # ip -> {rx, tx} session cumulative (estimated)
 
+# Compact rolling history so spikes/drops recorded by watch.ps1 can be cross-referenced
+# against what was active on the network at that same timestamp.
+$trafficHistory    = @()
+$maxTrafficHistory = 2400   # 2 hours at 3s poll interval
+
 $portNames = @{
     80    = "HTTP"
     443   = "HTTPS"
@@ -458,6 +463,25 @@ while ($true) {
 
     $ts = $nowTs
 
+    # Compact snapshot: enough to spot "what was active" at a given timestamp without
+    # keeping full connection lists for every historical poll.
+    $trafficHistory += [ordered]@{
+        ts          = $ts
+        connections = $connList.Count
+        newConns    = $newThisPoll
+        intervalRx  = $intervalRx
+        intervalTx  = $intervalTx
+        topApps     = @($appsOut | Select-Object -First 5 | ForEach-Object {
+            [ordered]@{ name = $_.name; pct = $_.pct; rxBytes = $_.rxBytes; txBytes = $_.txBytes }
+        })
+        topHosts    = @($hostsOut | Select-Object -First 5 | ForEach-Object {
+            [ordered]@{ name = $_.hostname; pct = $_.pct; rxBytes = $_.rxBytes; txBytes = $_.txBytes }
+        })
+    }
+    if ($trafficHistory.Count -gt $maxTrafficHistory) {
+        $trafficHistory = $trafficHistory[($trafficHistory.Count - $maxTrafficHistory)..($trafficHistory.Count - 1)]
+    }
+
     $output = [ordered]@{
         updated     = $ts
         totals      = [ordered]@{
@@ -477,6 +501,7 @@ while ($true) {
         countries   = $countriesOut
         protocols   = $protosOut
         connections = @($connList | Select-Object -First 200)
+        history     = @($trafficHistory)
     } | ConvertTo-Json -Depth 5
 
     $output | Out-File -FilePath $outputFile -Encoding UTF8 -NoNewline

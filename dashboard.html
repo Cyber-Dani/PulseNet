@@ -1078,6 +1078,28 @@ function timeFmt(ts) {
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
+let trafficHistory = [];
+
+async function pollTrafficHistory() {
+  try {
+    const r = await fetch('data/traffic-data.json?t=' + Date.now());
+    if (!r.ok) return;
+    const data = await r.json();
+    trafficHistory = data.history || [];
+  } catch (e) { /* best-effort — event log just won't show traffic context */ }
+}
+
+function nearestTrafficSnapshot(ts) {
+  if (!trafficHistory.length) return null;
+  let best = null, bestDiff = Infinity;
+  for (const snap of trafficHistory) {
+    const diff = Math.abs(snap.ts - ts);
+    if (diff < bestDiff) { best = snap; bestDiff = diff; }
+  }
+  // Traffic polls every 3s — don't attribute a snapshot more than ~8s away from the event.
+  return (best && bestDiff <= 8) ? best : null;
+}
+
 async function poll() {
   try {
     const r = await fetch('data/wifi-data.json?t=' + Date.now());
@@ -1085,6 +1107,7 @@ async function poll() {
     const data = await r.json();
     lastData = data;
     document.getElementById('error').style.display = 'none';
+    pollTrafficHistory();
 
     if (data.updated === lastTs) return;
     lastTs = data.updated;
@@ -1274,7 +1297,20 @@ async function poll() {
         const diagLine = verdict
           ? `<br><span style="color:var(--muted);font-size:10px;padding-left:2px">↳ ${verdict}</span>`
           : '';
-        return `${timeFmt(p.ts)} ${tags.join(' ')} ${parts.join(' &middot; ')}${diagLine}`;
+
+        const snap = nearestTrafficSnapshot(p.ts);
+        let trafficLine = '';
+        if (snap && (snap.topApps.length || snap.topHosts.length)) {
+          const app  = snap.topApps[0]  ? `${snap.topApps[0].name} (${snap.topApps[0].pct}%)`  : null;
+          const host = snap.topHosts[0] ? `${snap.topHosts[0].name} (${snap.topHosts[0].pct}%)` : null;
+          const bits = [];
+          if (app)  bits.push(`top app: ${app}`);
+          if (host) bits.push(`top host: ${host}`);
+          bits.push(`${snap.connections} active conns`);
+          trafficLine = `<br><span style="color:var(--muted);font-size:10px;padding-left:2px">&#8942; ${bits.join(' &middot; ')}</span>`;
+        }
+
+        return `${timeFmt(p.ts)} ${tags.join(' ')} ${parts.join(' &middot; ')}${diagLine}${trafficLine}`;
       }).join('<br>');
     }
 
@@ -1293,6 +1329,8 @@ function diagnose(p) {
   const aeTotal = ae ? (ae.rxErrors||0)+(ae.txErrors||0)+(ae.rxDiscards||0)+(ae.txDiscards||0) : 0;
 
   if (p.loss) {
+    if (p.connType === 'unknown')
+      return 'Your network adapter reported no active link at that moment. This points to a local cable, port, or driver/power-saving issue on this PC — not your router or ISP.';
     if (p.gatewayLoss)
       return 'Your router was also unreachable. The problem is between your router and your ISP, or the router itself went down.';
     if (p.roamed)
