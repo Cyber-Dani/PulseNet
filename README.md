@@ -26,6 +26,33 @@ All metrics are logged over time and shown as scrollable charts so you can look 
 
 ---
 
+## Traffic tab
+
+Switch to the **Traffic** tab (next to Signal in the header) to see what's actually talking on your network:
+
+| View | What it shows |
+|---|---|
+| **Hosts / Apps / Countries / Protocols** | Active connections grouped four ways, with estimated bandwidth per app and host |
+| **Long-lived** | Connections that have stayed open a while, sorted by age |
+| **Matrix** | Which apps are talking to which countries |
+| **Tags** | Known hosts are labelled (tracker, ads, CDN, cloud, gaming, chat, storage, etc.) and show a plain-English description on hover, e.g. hovering `api.anthropic.com` shows "Anthropic API (Claude)" |
+
+Bandwidth figures are an estimate (prefixed `~`) — Windows has no public API for true per-process byte counts without an elevated ETW session, so PulseNet approximates it by weighting adapter-level throughput by each app/host's share of active connections.
+
+### Contributing host tags
+
+The tag/description list lives in [`data/tracker-rules.json`](data/tracker-rules.json) and is maintained by hand — it can't possibly cover every service everyone runs. If you spot an untagged host you recognize, please open a PR adding an entry. Each rule looks like:
+
+```json
+{ "pattern": "example\\.com", "tag": "cloud", "desc": "What this service actually is" }
+```
+
+- `pattern` is a case-insensitive regex matched against the hostname (or the ISP/org string from GeoIP lookup if `"matchOrg": true` is set).
+- `tag` drives the small colored pill shown on the host row.
+- `desc` is the tooltip text shown on hover.
+
+---
+
 ## How to start
 
 1. **Download the repository** — click the green **Code** button on GitHub and choose **Download ZIP**.
@@ -60,6 +87,8 @@ Either close the browser tab (PulseNet will shut down automatically within about
 
 `watch.ps1` detects whether your active adapter is WiFi or Ethernet, collects the relevant connection metrics every 2 seconds using built-in Windows tools (`netsh`, `ping`, `Get-NetAdapter`, `Get-NetAdapterStatistics`), and writes them to `data/wifi-data.json`.
 
-`TrayMonitor.ps1` runs `watch.ps1` silently in the background, starts a local web server on `http://localhost:8765`, and manages the tray icon.
+`traffic-watch.ps1` polls active TCP connections, resolves hostnames and GeoIP/org info for remote IPs, and writes them to `data/traffic-data.json` on the same interval.
 
-The dashboard (`dashboard.html`) reads `data/wifi-data.json` every 2 seconds and updates the charts and cards live.
+`TrayMonitor.ps1` runs both collectors silently in the background, starts a local web server on `http://localhost:8765`, and manages the tray icon.
+
+The dashboard (`dashboard.html`) reads `data/wifi-data.json` every 2 seconds and updates the charts and cards live. The traffic dashboard (`traffic.html`) does the same with `data/traffic-data.json`.

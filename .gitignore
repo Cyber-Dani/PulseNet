@@ -2,7 +2,8 @@
 docs/
 
 # Runtime data files (generated while the monitor is running)
-data/*.json
+data/wifi-data.json
+data/traffic-data.json
 
 # Tray monitor PID file
 .monitor.pid

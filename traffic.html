@@ -1,0 +1,1292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Traffic Monitor</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --green:  #22c55e;
+    --amber:  #f59e0b;
+    --red:    #ef4444;
+    --pink:   #ec4899;
+  }
+
+  :root, [data-theme="midnight"] {
+    --bg:      #0d0f12;
+    --surface: #13161b;
+    --border:  #1e2229;
+    --border2: #2a2f38;
+    --text:    #e2e6ed;
+    --muted:   #8b95a8;
+    --accent:  #3b82f6;
+  }
+
+  [data-theme="dusk"] {
+    --bg:      #171e2d;
+    --surface: #1e2740;
+    --border:  #283555;
+    --border2: #344468;
+    --text:    #cdd8e8;
+    --muted:   #7a8fa8;
+    --accent:  #3bb8c8;
+  }
+
+  [data-theme="ember"] {
+    --bg:      #140e0b;
+    --surface: #1e1511;
+    --border:  #2e1f17;
+    --border2: #3e2c22;
+    --text:    #ede0d8;
+    --muted:   #9a8070;
+    --accent:  #e07548;
+  }
+
+  [data-theme="daylight"] {
+    --bg:      #f0f2f6;
+    --surface: #ffffff;
+    --border:  #dde1ea;
+    --border2: #c2c8d4;
+    --text:    #111318;
+    --muted:   #5a6478;
+    --accent:  #3b82f6;
+  }
+
+  [data-theme="arctic"] {
+    --bg:      #e0eff8;
+    --surface: #f2f9fc;
+    --border:  #bcd8ec;
+    --border2: #96c0d8;
+    --text:    #0c2030;
+    --muted:   #386878;
+    --accent:  #1a8fb0;
+  }
+
+  [data-theme="sakura"] {
+    --bg:      #fdf0f4;
+    --surface: #ffffff;
+    --border:  #f0d8e4;
+    --border2: #e0bece;
+    --text:    #280e1a;
+    --muted:   #885060;
+    --accent:  #c83868;
+  }
+
+  [data-theme="lavender"] {
+    --bg:      #f2eef8;
+    --surface: #faf8ff;
+    --border:  #ddd4f0;
+    --border2: #c8bae4;
+    --text:    #1c1430;
+    --muted:   #685098;
+    --accent:  #7048c8;
+  }
+
+  [data-theme="terracotta"] {
+    --bg:      #fdf4ee;
+    --surface: #fffaf6;
+    --border:  #f0ddd0;
+    --border2: #e0c8b4;
+    --text:    #2a1610;
+    --muted:   #7a5040;
+    --accent:  #2ab098;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+    height: 100vh;
+    overflow: hidden;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Header ── */
+  header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  h1 {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 16px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  #status {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  #status.live::before {
+    content: '';
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--green);
+    margin-right: 6px;
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+  .hdr-btn {
+    background: none;
+    border: 1px solid var(--border2);
+    border-radius: 4px;
+    color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 6px 14px;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s, background 0.15s;
+  }
+  .hdr-btn:hover  { border-color: var(--accent); color: var(--accent); }
+  .hdr-btn:active { background: rgba(59,130,246,0.08); }
+
+  /* ── Totals bar ── */
+  .totals {
+    display: flex;
+    gap: 32px;
+    padding: 10px 20px;
+    border-bottom: 1px solid var(--border);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+  .totals strong { color: var(--text); font-weight: 500; margin-left: 5px; }
+
+  /* ── View tabs ── */
+  .tabs {
+    display: flex;
+    gap: 4px;
+    padding: 8px 20px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .tab-btn {
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .tab-btn:hover   { color: var(--text); background: rgba(255,255,255,0.03); }
+  .tab-btn.active  { color: var(--accent); background: var(--surface); }
+
+  .view-panel { display: none; flex: 1; min-height: 0; flex-direction: column; overflow: hidden; }
+  .view-panel.active { display: flex; }
+
+  /* ── Matrix view ── */
+  .matrix-row { border-bottom: 1px solid var(--border); }
+  .matrix-app-hdr {
+    display: flex; align-items: center; gap: 8px;
+    padding: 9px 20px; cursor: pointer;
+  }
+  .matrix-app-hdr:hover { background: rgba(255,255,255,0.03); }
+  .matrix-countries { display: flex; flex-wrap: wrap; gap: 14px; padding: 4px 20px 12px 44px; }
+  .matrix-country { font-size: 13px; color: var(--muted); font-family: 'IBM Plex Mono', monospace; }
+  .matrix-country strong { color: var(--text); font-weight: 500; }
+
+  /* ── Long-lived view ── */
+  .ll-toolbar { display: flex; align-items: center; gap: 8px; padding: 10px 20px; border-bottom: 1px solid var(--border); }
+  .ll-toggle-btn {
+    background: none; border: 1px solid var(--border2); border-radius: 4px; color: var(--muted);
+    font-family: 'IBM Plex Mono', monospace; font-size: 12px; padding: 4px 10px; cursor: pointer;
+  }
+  .ll-toggle-btn.active { color: var(--accent); border-color: var(--accent); }
+
+  /* ── Tracker pills ── */
+  .tag-pill { font-family: 'IBM Plex Mono', monospace; font-size: 10px; padding: 1px 5px; border-radius: 3px; flex-shrink: 0; }
+  .tag-tracker,  .tag-ads    { background: rgba(239,68,68,0.14); color: var(--red); }
+  .tag-analytics, .tag-telemetry { background: rgba(245,158,11,0.14); color: var(--amber); }
+  .tag-CDN       { background: rgba(59,130,246,0.14); color: var(--accent); }
+  .tag-cloud     { background: rgba(255,255,255,0.06); color: var(--muted); }
+
+  .conn-toggle-btn {
+    background: none; border: 1px solid var(--border2); border-radius: 4px; color: var(--muted);
+    font-family: 'IBM Plex Mono', monospace; font-size: 12px; padding: 3px 9px; cursor: pointer;
+  }
+  .conn-toggle-btn.active { color: var(--accent); border-color: var(--accent); }
+  tr.ephemeral-dim { opacity: 0.5; }
+  .warn-icon { color: var(--amber); cursor: help; margin-right: 4px; }
+
+  /* ── Main 4-column grid ── */
+  .columns {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    overflow: hidden;
+  }
+
+  .col {
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    max-height: 520px;
+  }
+  .col:last-child { border-right: none; }
+
+  .col-header {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 10px 16px 8px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .col-body {
+    overflow-y: auto;
+    flex: 1;
+  }
+  .col-body::-webkit-scrollbar { width: 4px; }
+  .col-body::-webkit-scrollbar-track { background: transparent; }
+  .col-body::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  .row {
+    display: flex;
+    align-items: center;
+    padding: 7px 16px;
+    border-bottom: 1px solid var(--border);
+    gap: 10px;
+    position: relative;
+    transition: background 0.1s;
+  }
+  .row:hover { background: rgba(255,255,255,0.03); }
+  .row:last-child { border-bottom: none; }
+
+  /* bar behind each row */
+  .row-bar {
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    opacity: 0.07;
+    pointer-events: none;
+    transition: width 0.4s ease;
+  }
+
+  .row-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 14px;
+  }
+
+  .row-count {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+
+  .row-sub {
+    font-size: 12px;
+    color: var(--muted);
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .flag {
+    font-size: 14px;
+    flex-shrink: 0;
+    width: 20px;
+    text-align: center;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .proto-pill {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: rgba(59,130,246,0.12);
+    color: var(--accent);
+    flex-shrink: 0;
+  }
+
+  .empty {
+    padding: 20px 16px;
+    font-size: 13px;
+    color: var(--muted);
+    font-style: italic;
+  }
+
+  .expand-toggle {
+    font-size: 9px;
+    color: var(--muted);
+    flex-shrink: 0;
+    width: 12px;
+    transition: transform 0.15s;
+    user-select: none;
+  }
+  .row.expandable { cursor: pointer; }
+  .row.expandable:hover .expand-toggle { color: var(--accent); }
+  .row.expanded .expand-toggle { transform: rotate(90deg); }
+
+  /* ── Connection group rows (table) ── */
+  tr.conn-group-hdr { cursor: pointer; }
+  tr.conn-group-hdr:hover { background: rgba(255,255,255,0.03); }
+  tr.conn-group-hdr .expand-toggle { display: inline-block; width: 10px; margin-right: 4px; }
+  tr.conn-group-hdr.expanded .expand-toggle { transform: rotate(90deg); }
+  .group-count-badge {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--accent);
+    background: rgba(59,130,246,0.12);
+    border-radius: 3px;
+    padding: 1px 5px;
+    margin-left: 6px;
+  }
+  tr.conn-child td { background: rgba(0,0,0,0.12); color: var(--muted); }
+  tr.conn-child td:first-child { padding-left: 34px; }
+
+  .child-row {
+    background: rgba(0,0,0,0.12);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 5px 16px 5px 36px;
+    gap: 8px;
+  }
+  .child-row:last-child { border-bottom: none; }
+  .child-row .row-name { font-size: 12px; color: var(--muted); flex: 1; }
+  .child-row .row-count { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: var(--muted); flex-shrink: 0; }
+
+  /* ── Resize handle ── */
+  .resize-handle {
+    flex-shrink: 0;
+    height: 14px;
+    cursor: ns-resize;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 3px;
+    background: var(--surface);
+    border-top: 1px solid var(--border2);
+    border-bottom: 1px solid var(--border2);
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .resize-handle:hover, .resize-handle.dragging {
+    background: rgba(59,130,246,0.08);
+    border-color: var(--accent);
+  }
+  .resize-handle::before, .resize-handle::after {
+    content: '';
+    width: 36px;
+    height: 2px;
+    border-radius: 1px;
+    background: var(--border2);
+    transition: background 0.15s;
+  }
+  .resize-handle:hover::before, .resize-handle:hover::after,
+  .resize-handle.dragging::before, .resize-handle.dragging::after { background: var(--accent); }
+
+  /* ── Connection table ── */
+  .conn-section {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .conn-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 20px 8px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .conn-title {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  #conn-filter {
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    border-radius: 4px;
+    color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    padding: 3px 8px;
+    width: 200px;
+    outline: none;
+  }
+  #conn-filter:focus { border-color: var(--accent); }
+  #conn-filter::placeholder { color: var(--muted); }
+
+  .conn-table-wrap {
+    overflow-x: auto;
+    overflow-y: auto;
+    flex: 1;
+  }
+  .conn-table-wrap::-webkit-scrollbar { height: 4px; width: 4px; }
+  .conn-table-wrap::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+  }
+
+  thead th {
+    padding: 6px 12px;
+    text-align: left;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    background: var(--surface);
+    position: sticky;
+    top: 0;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+
+  tbody tr { border-bottom: 1px solid var(--border); }
+  tbody tr:hover { background: rgba(255,255,255,0.03); }
+  tbody td {
+    padding: 5px 12px;
+    white-space: nowrap;
+    max-width: 280px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .state-established { color: var(--green); }
+  .state-timewait    { color: var(--amber); }
+  .state-closewait   { color: var(--muted); }
+
+  #error {
+    display: none;
+    margin: 24px 20px;
+    padding: 16px;
+    background: rgba(239,68,68,0.08);
+    border: 1px solid rgba(239,68,68,0.2);
+    border-radius: 6px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--red);
+    line-height: 1.7;
+  }
+
+  /* colour palette for bars */
+  .bar-blue   { background: #3b82f6; }
+  .bar-green  { background: #22c55e; }
+  .bar-amber  { background: #f59e0b; }
+  .bar-pink   { background: #ec4899; }
+  .bar-cyan   { background: #06b6d4; }
+
+  #theme-picker { position: relative; display: inline-block; }
+  #theme-menu {
+    display: none;
+    position: absolute;
+    right: 0;
+    top: calc(100% + 8px);
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    border-radius: 10px;
+    padding: 12px;
+    z-index: 200;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+    width: 296px;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+  }
+  #theme-menu.open { display: grid; }
+  .theme-swatch {
+    cursor: pointer;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 2px solid transparent;
+    transition: border-color 0.15s, transform 0.1s;
+  }
+  .theme-swatch:hover  { border-color: var(--accent); transform: scale(1.04); }
+  .theme-swatch.active { border-color: var(--accent); }
+  .swatch-preview { height: 44px; display: flex; flex-direction: column; }
+  .swatch-bg      { flex: 1; }
+  .swatch-bottom  { height: 13px; display: flex; }
+  .swatch-surface { flex: 1; }
+  .swatch-accent  { width: 36%; }
+  .swatch-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 8px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--muted);
+    text-align: center;
+    padding: 3px 2px 4px;
+    background: var(--surface);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+</style>
+<script>
+  (function(){ var t=localStorage.getItem('wfm-theme'); if(t) document.documentElement.setAttribute('data-theme',t); })();
+</script>
+</head>
+<body>
+
+<header>
+  <div style="display:flex;align-items:center;gap:0">
+    <h1>PulseNet</h1>
+    <div style="width:1px;height:18px;background:var(--border2);margin:0 20px"></div>
+    <nav style="display:flex;align-items:center;gap:4px">
+      <a href="dashboard.html" style="font-family:'IBM Plex Sans',sans-serif;font-size:14px;font-weight:400;color:var(--muted);text-decoration:none;padding:6px 12px;border-radius:4px;transition:background .15s,color .15s" onmouseover="this.style.background='var(--border)';this.style.color='var(--text)'" onmouseout="this.style.background='transparent';this.style.color='var(--muted)'">Signal</a>
+      <a href="traffic.html"   style="font-family:'IBM Plex Sans',sans-serif;font-size:14px;font-weight:500;color:var(--text);text-decoration:none;padding:6px 12px;border-radius:4px;background:var(--border)">Traffic</a>
+    </nav>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px">
+    <div id="status">waiting for data</div>
+    <div id="theme-picker">
+      <button class="hdr-btn" onclick="toggleThemePicker(event)">Theme ▾</button>
+      <div id="theme-menu"></div>
+    </div>
+  </div>
+</header>
+
+<div class="totals">
+  <div>↓<strong id="t-rx">—</strong></div>
+  <div>↑<strong id="t-tx">—</strong></div>
+  <div>Session ↓<strong id="t-session-rx">—</strong> ↑<strong id="t-session-tx">—</strong></div>
+  <div id="t-new-wrap" style="display:none">⚡<strong id="t-new">—</strong> new/poll</div>
+  <canvas id="new-sparkline" width="90" height="18" style="vertical-align:middle;margin:0 4px"></canvas>
+  <div style="margin-left:auto;display:flex;gap:32px">
+    <div>Connections<strong id="t-conns">—</strong></div>
+    <div>Apps<strong id="t-apps">—</strong></div>
+    <div>Hosts<strong id="t-hosts">—</strong></div>
+    <div>Countries<strong id="t-countries">—</strong></div>
+  </div>
+</div>
+
+<div class="tabs" id="view-tabs">
+  <button class="tab-btn active" data-view="overview" onclick="switchView('overview')">Overview</button>
+  <button class="tab-btn" data-view="matrix" onclick="switchView('matrix')">Matrix</button>
+  <button class="tab-btn" data-view="longlived" onclick="switchView('longlived')">Long-lived</button>
+</div>
+
+<div class="view-panel active" id="view-overview" style="display:flex">
+  <div class="columns" id="col-header-row">
+    <div class="col">
+      <div class="col-header" id="col-header-apps">Apps</div>
+      <div class="col-body" id="col-apps"><div class="empty">No data yet</div></div>
+    </div>
+    <div class="col">
+      <div class="col-header" id="col-header-hosts">Hosts</div>
+      <div class="col-body" id="col-hosts"><div class="empty">No data yet</div></div>
+    </div>
+    <div class="col">
+      <div class="col-header">Protocol</div>
+      <div class="col-body" id="col-proto"><div class="empty">No data yet</div></div>
+    </div>
+    <div class="col">
+      <div class="col-header">Countries</div>
+      <div class="col-body" id="col-countries"><div class="empty">No data yet</div></div>
+    </div>
+  </div>
+
+  <div class="resize-handle" id="resize-handle"></div>
+
+  <div class="conn-section">
+    <div class="conn-header">
+      <div class="conn-title">Active Connections</div>
+      <div style="display:flex;align-items:center;gap:14px">
+        <div style="display:flex;gap:4px">
+          <button class="conn-toggle-btn active" data-persist="all" onclick="setPersistFilter('all')">All</button>
+          <button class="conn-toggle-btn" data-persist="persistent" onclick="setPersistFilter('persistent')">Persistent</button>
+          <button class="conn-toggle-btn" data-persist="ephemeral" onclick="setPersistFilter('ephemeral')">Ephemeral</button>
+        </div>
+        <button class="conn-toggle-btn" id="tracker-filter-btn" onclick="toggleTrackerFilter()">Trackers only</button>
+        <input id="conn-filter" type="text" placeholder="filter by app, host, ip…">
+      </div>
+    </div>
+    <div class="conn-table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th id="th-app" style="cursor:pointer;user-select:none" onclick="sortConns('app')">App <span id="sort-app">⇅</span></th>
+            <th>Remote Host</th>
+            <th>Remote IP</th>
+            <th>Port</th>
+            <th>Protocol</th>
+            <th>State</th>
+            <th>Since</th>
+            <th>PID</th>
+          </tr>
+        </thead>
+        <tbody id="conn-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="view-panel" id="view-matrix">
+  <div class="conn-table-wrap" id="matrix-body">
+    <div class="empty">No data yet</div>
+  </div>
+</div>
+
+<div class="view-panel" id="view-longlived">
+  <div class="ll-toolbar">
+    <span style="color:var(--muted);font-size:12px;font-family:'IBM Plex Mono',monospace;text-transform:uppercase;letter-spacing:.08em">Threshold</span>
+    <button class="ll-toggle-btn" data-threshold="300" onclick="setLLThreshold(300)">5 min</button>
+    <button class="ll-toggle-btn" data-threshold="900" onclick="setLLThreshold(900)">15 min</button>
+    <button class="ll-toggle-btn" data-threshold="3600" onclick="setLLThreshold(3600)">1 hour</button>
+  </div>
+  <div class="conn-table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>App</th>
+          <th>Remote Host</th>
+          <th>Protocol</th>
+          <th>Age</th>
+          <th>Local Port</th>
+        </tr>
+      </thead>
+      <tbody id="longlived-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<div id="error">
+  <strong>Cannot read data/traffic-data.json</strong><br><br>
+  Make sure traffic-watch.ps1 is running in the same folder as this file.<br>
+  Open a new PowerShell window and run:<br><br>
+  &nbsp;&nbsp;Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass<br>
+  &nbsp;&nbsp;.\traffic-watch.ps1
+</div>
+
+<script>
+// ── Resizable split ─────────────────────────────────────────────
+(function() {
+  const STORAGE_KEY = 'pulsenet-traffic-split';
+  const DEFAULT_H   = 260;
+  const MIN_H       = 80;
+  const MIN_CONN_H  = 80;
+
+  const columns = document.querySelector('.columns');
+  const handle  = document.getElementById('resize-handle');
+
+  function applyHeight(h) {
+    columns.style.height = h + 'px';
+  }
+
+  // Restore saved height
+  const saved = parseInt(localStorage.getItem(STORAGE_KEY));
+  applyHeight(isNaN(saved) ? DEFAULT_H : saved);
+
+  let startY = 0, startH = 0;
+
+  handle.addEventListener('mousedown', e => {
+    e.preventDefault();
+    startY = e.clientY;
+    startH = columns.offsetHeight;
+    handle.classList.add('dragging');
+    document.body.style.cursor = 'ns-resize';
+    document.body.style.userSelect = 'none';
+
+    function onMove(e) {
+      const bodyH    = document.body.offsetHeight;
+      const newH     = Math.max(MIN_H, Math.min(startH + e.clientY - startY, bodyH - MIN_CONN_H - 60));
+      applyHeight(newH);
+    }
+    function onUp(e) {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup',   onUp);
+      handle.classList.remove('dragging');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      localStorage.setItem(STORAGE_KEY, columns.offsetHeight);
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup',   onUp);
+  });
+})();
+
+let lastTs       = null;
+let allConns     = [];
+let filterVal    = '';
+let iconIndex    = {};  // appName -> base64 PNG
+let expandedApps = new Set();
+let connSort     = { col: null, dir: 1 };  // col: 'app'|null
+let expandedMatrixApps = new Set();
+let expandedConnGroups = new Set();
+let persistFilter   = 'all';   // 'all' | 'persistent' | 'ephemeral'
+let trackerFilterOn = false;
+let llThreshold      = parseInt(localStorage.getItem('pulsenet-ll-threshold')) || 300;
+let trackerRules     = [];
+let newConnsHistory  = [];     // sparkline data, most recent last
+let hostTagIndex     = {};     // ip -> tag
+let currentView      = 'overview';
+
+fetch('data/tracker-rules.json').then(r => r.ok ? r.json() : []).then(rules => {
+  trackerRules = (rules || []).map(r => ({ ...r, re: new RegExp(r.pattern, 'i') }));
+}).catch(() => { trackerRules = []; });
+
+function tagHost(hostname, org) {
+  for (const rule of trackerRules) {
+    if (rule.matchOrg ? rule.re.test(org || '') : rule.re.test(hostname || '')) return rule.tag;
+  }
+  return null;
+}
+
+// Returns a human-readable description of what a host is, or null if unrecognised
+function hostDesc(hostname, org) {
+  for (const rule of trackerRules) {
+    if (rule.matchOrg ? rule.re.test(org || '') : rule.re.test(hostname || '')) return rule.desc || null;
+  }
+  return null;
+}
+
+function fmtBytes(n) {
+  if (!n || n < 0) n = 0;
+  if (n < 1024) return n + ' B';
+  if (n < 1024 ** 2) return (n / 1024).toFixed(1) + ' KB';
+  if (n < 1024 ** 3) return (n / 1024 ** 2).toFixed(1) + ' MB';
+  return (n / 1024 ** 3).toFixed(2) + ' GB';
+}
+
+function fmtRate(n) { return fmtBytes(n) + '/s'; }
+
+function switchView(name) {
+  currentView = name;
+  document.querySelectorAll('.view-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('view-' + name).classList.add('active');
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.view === name));
+  if (name === 'matrix')    renderMatrix(lastHostsData);
+  if (name === 'longlived') renderLongLived();
+}
+
+function setPersistFilter(v) {
+  persistFilter = v;
+  document.querySelectorAll('.conn-toggle-btn[data-persist]').forEach(b => b.classList.toggle('active', b.dataset.persist === v));
+  renderConns();
+}
+
+function toggleTrackerFilter() {
+  trackerFilterOn = !trackerFilterOn;
+  document.getElementById('tracker-filter-btn').classList.toggle('active', trackerFilterOn);
+  renderHosts(lastHostsData);
+}
+
+function setLLThreshold(sec) {
+  llThreshold = sec;
+  localStorage.setItem('pulsenet-ll-threshold', sec);
+  document.querySelectorAll('.ll-toggle-btn').forEach(b => b.classList.toggle('active', parseInt(b.dataset.threshold) === sec));
+  renderLongLived();
+}
+
+function drawSparkline(history) {
+  const canvas = document.getElementById('new-sparkline');
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (!history.length) return;
+  const max = Math.max(1, ...history);
+  const step = canvas.width / Math.max(1, history.length - 1);
+  ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#3b82f6';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  history.forEach((v, i) => {
+    const x = i * step;
+    const y = canvas.height - (v / max) * (canvas.height - 2) - 1;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+}
+
+function sortConns(col) {
+  if (connSort.col === col) connSort.dir *= -1;
+  else { connSort.col = col; connSort.dir = 1; }
+  const icon = document.getElementById('sort-app');
+  if (icon) icon.textContent = connSort.col === 'app' ? (connSort.dir === 1 ? '↑' : '↓') : '⇅';
+  renderConns();
+}
+
+function relTime(ts) {
+  if (!ts) return '—';
+  const s = Math.floor(Date.now() / 1000) - ts;
+  if (s < 5)    return 'just now';
+  if (s < 60)   return s + 's ago';
+  if (s < 3600) return Math.floor(s / 60) + 'm ago';
+  return Math.floor(s / 3600) + 'h ago';
+}
+
+function iconImg(b64) {
+  if (b64) return `<img src="data:image/png;base64,${b64}" width="16" height="16" style="border-radius:2px;flex-shrink:0;image-rendering:auto;vertical-align:middle">`;
+  return '<span style="display:inline-block;width:16px;height:16px;background:var(--border2);border-radius:3px;flex-shrink:0;vertical-align:middle"></span>';
+}
+
+document.getElementById('conn-filter').addEventListener('input', e => {
+  filterVal = e.target.value.toLowerCase();
+  renderConns();
+});
+
+function timeFmt(ts) {
+  return new Date(ts * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+// Convert country code to flag image (Windows/Chrome has no glyph for flag emoji, so use flagcdn.com images)
+function countryFlag(code) {
+  if (!code || code.length !== 2 || code === '??' || code === 'LAN') return '🏠';
+  const cc = code.toLowerCase();
+  return `<img src="https://flagcdn.com/16x12/${cc}.png" width="16" height="12" alt="${esc(code.toUpperCase())}" style="vertical-align:middle;border-radius:2px" onerror="this.replaceWith(document.createTextNode('${esc(code.toUpperCase())}'))">`;
+}
+
+function bar(pct, cls) {
+  return `<div class="row-bar ${cls}" style="width:${pct}%"></div>`;
+}
+
+function toggleAppExpand(name) {
+  if (expandedApps.has(name)) expandedApps.delete(name);
+  else expandedApps.add(name);
+  const row      = document.querySelector(`.row[data-app="${CSS.escape(name)}"]`);
+  const children = document.getElementById('app-children-' + btoa(unescape(encodeURIComponent(name))).replace(/[^a-zA-Z0-9]/g, ''));
+  if (row)      row.classList.toggle('expanded', expandedApps.has(name));
+  if (children) children.style.display = expandedApps.has(name) ? '' : 'none';
+}
+
+let lastAppsData  = [];
+let lastHostsData = [];
+
+function renderApps(apps) {
+  lastAppsData = apps || [];
+  const el = document.getElementById('col-apps');
+  if (!apps || !apps.length) { el.innerHTML = '<div class="empty">No connections</div>'; return; }
+  const sorted  = [...apps].sort((a, b) => ((b.rxBytes||0)+(b.txBytes||0)) - ((a.rxBytes||0)+(a.txBytes||0)));
+  const maxByte = Math.max(1, ...sorted.map(a => (a.rxBytes||0)+(a.txBytes||0)));
+  document.getElementById('col-header-apps').textContent = `Apps (${apps.length})`;
+  el.innerHTML = sorted.map(a => {
+    const hasChildren = a.children && a.children.length;
+    const expanded    = expandedApps.has(a.name);
+    const safeId      = btoa(unescape(encodeURIComponent(a.name))).replace(/[^a-zA-Z0-9]/g, '');
+    const toggle      = hasChildren ? `<span class="expand-toggle">&#9654;</span>` : `<span style="width:12px;flex-shrink:0"></span>`;
+    const onclick     = hasChildren ? `onclick="toggleAppExpand('${esc(a.name)}')"` : '';
+    const rowClass    = `row${hasChildren ? ' expandable' : ''}${expanded ? ' expanded' : ''}`;
+    const totalBytes  = (a.rxBytes||0) + (a.txBytes||0);
+    const pct         = Math.round((totalBytes / maxByte) * 100);
+    const burst       = a.newConns > 3 ? '<span title="Burst: many new connections this poll">⚡</span> ' : '';
+
+    const childrenHtml = hasChildren ? `
+      <div id="app-children-${safeId}" style="display:${expanded ? '' : 'none'}">
+        ${a.children.map(ch => `
+        <div class="child-row">
+          <div class="row-name">${esc(ch.label)}</div>
+          <div class="row-count">${ch.connections}</div>
+        </div>`).join('')}
+      </div>` : '';
+
+    return `
+    <div class="${rowClass}" data-app="${esc(a.name)}" ${onclick} title="${a.connections} connections · ~${fmtBytes(totalBytes)} estimated this session">
+      ${bar(pct, 'bar-blue')}
+      ${toggle}
+      ${iconImg(a.iconB64)}
+      <div class="row-name" style="margin-left:6px">
+        <span>${burst}${esc(a.name)}</span>
+        <span class="row-sub">${a.connections} conn${a.connections !== 1 ? 's' : ''} · ${a.hosts} host${a.hosts !== 1 ? 's' : ''}</span>
+      </div>
+      <div class="row-count" style="color:var(--muted)">~${fmtBytes(totalBytes)}</div>
+    </div>${childrenHtml}`;
+  }).join('');
+}
+
+function renderHosts(hosts) {
+  lastHostsData = hosts || [];
+  const el = document.getElementById('col-hosts');
+  hostTagIndex = {};
+  (hosts || []).forEach(h => { hostTagIndex[h.ip] = tagHost(h.hostname, h.org); });
+  let list = hosts || [];
+  if (trackerFilterOn) list = list.filter(h => hostTagIndex[h.ip]);
+  const trackerCount = (hosts || []).filter(h => hostTagIndex[h.ip] && hostTagIndex[h.ip] !== 'cloud' && hostTagIndex[h.ip] !== 'CDN').length;
+  const cdnCount      = (hosts || []).filter(h => hostTagIndex[h.ip] === 'CDN').length;
+  document.getElementById('col-header-hosts').textContent =
+    `Hosts (${(hosts||[]).length}${trackerCount ? `, ${trackerCount} trackers` : ''}${cdnCount ? `, ${cdnCount} CDN` : ''})`;
+  if (!list.length) { el.innerHTML = '<div class="empty">No connections</div>'; return; }
+  const sorted  = [...list].sort((a, b) => ((b.rxBytes||0)+(b.txBytes||0)) - ((a.rxBytes||0)+(a.txBytes||0)));
+  const maxByte = Math.max(1, ...sorted.map(h => (h.rxBytes||0)+(h.txBytes||0)));
+  el.innerHTML = sorted.map(h => {
+    const resolved  = h.hostname !== h.ip;
+    const label     = resolved ? h.hostname : h.ip;
+    const sub       = resolved ? h.ip : (h.org || '');
+    const flag      = h.countryCode ? countryFlag(h.countryCode) : '';
+    const flagTitle = h.country || (h.countryCode ? h.countryCode : '');
+    const totalBytes = (h.rxBytes||0) + (h.txBytes||0);
+    const pct       = Math.round((totalBytes / maxByte) * 100);
+    const tag       = hostTagIndex[h.ip];
+    const pill      = tag ? `<span class="tag-pill tag-${tag}">${tag}</span>` : '';
+    const desc      = hostDesc(h.hostname, h.org);
+    const nameTitle = desc ? `${h.hostname} — ${desc}` : h.hostname;
+    return `
+    <div class="row" title="${h.connections} connections · ~${fmtBytes(totalBytes)} estimated this session">
+      ${bar(pct, 'bar-green')}
+      <span class="flag" title="${esc(flagTitle)}">${flag}</span>
+      <div class="row-name">
+        <span title="${esc(nameTitle)}">${esc(label)}</span> ${pill}
+        ${sub ? `<span class="row-sub">${esc(sub)}</span>` : ''}
+      </div>
+      <div class="row-count" style="color:var(--muted)">~${fmtBytes(totalBytes)}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderProtocols(protos) {
+  const el  = document.getElementById('col-proto');
+  if (!protos || !protos.length) { el.innerHTML = '<div class="empty">No data</div>'; return; }
+  const max = protos[0].connections;
+  el.innerHTML = protos.map(p => {
+    const pct     = Math.round((p.connections / max) * 100);
+    const tooltip = p.apps && p.apps.length ? `Used by: ${p.apps.join(', ')}` : '';
+    const nameStyle = p.isPort ? 'color:var(--muted);font-size:12px' : '';
+    const appHint = p.isPort && p.apps && p.apps.length
+      ? `<span class="row-sub">${esc(p.apps.length > 1 ? p.apps[0] + ' +' + (p.apps.length - 1) : p.apps[0])}</span>` : '';
+    return `
+    <div class="row" title="${esc(tooltip)}">
+      ${bar(pct, 'bar-amber')}
+      <div class="row-name" style="${nameStyle}">${esc(p.protocol)}${appHint}</div>
+      <div class="row-count">${p.connections}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderMatrix(hosts) {
+  const el = document.getElementById('matrix-body');
+  if (!hosts || !hosts.length) { el.innerHTML = '<div class="empty">No data yet</div>'; return; }
+  const appMap = {};  // appName -> countryCode -> {name, count}
+  hosts.forEach(h => {
+    const code = h.countryCode || '?';
+    const name = h.country || 'Unknown';
+    (h.apps || []).forEach(app => {
+      if (!appMap[app]) appMap[app] = {};
+      if (!appMap[app][code]) appMap[app][code] = { name, count: 0 };
+      appMap[app][code].count += h.connections;
+    });
+  });
+  const appNames = Object.keys(appMap).sort((a, b) => {
+    const totalA = Object.values(appMap[a]).reduce((s, c) => s + c.count, 0);
+    const totalB = Object.values(appMap[b]).reduce((s, c) => s + c.count, 0);
+    return totalB - totalA;
+  });
+  el.innerHTML = appNames.map(app => {
+    const countries = Object.entries(appMap[app]).sort((a, b) => b[1].count - a[1].count);
+    const expanded  = expandedMatrixApps.has(app);
+    return `
+    <div class="matrix-row">
+      <div class="matrix-app-hdr" onclick="toggleMatrixApp('${esc(app)}')">
+        <span class="expand-toggle" style="transform:rotate(${expanded ? 90 : 0}deg)">&#9654;</span>
+        <span>${esc(app)}</span>
+        <span class="row-sub">${countries.length} countr${countries.length !== 1 ? 'ies' : 'y'}</span>
+      </div>
+      <div class="matrix-countries" style="display:${expanded ? 'flex' : 'none'}">
+        ${countries.map(([code, c]) => `<span class="matrix-country">${countryFlag(code)} ${esc(c.name)} <strong>${c.count}</strong></span>`).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleMatrixApp(app) {
+  if (expandedMatrixApps.has(app)) expandedMatrixApps.delete(app);
+  else expandedMatrixApps.add(app);
+  renderMatrix(lastHostsData);
+}
+
+function ageFmt(ts) {
+  const s = Math.floor(Date.now() / 1000) - ts;
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m`;
+  return `${s}s`;
+}
+
+function renderLongLived() {
+  const tbody = document.getElementById('longlived-tbody');
+  const now = Math.floor(Date.now() / 1000);
+  const rows = allConns
+    .filter(c => c.firstSeen && (now - c.firstSeen) > llThreshold)
+    .sort((a, b) => a.firstSeen - b.firstSeen);
+  if (!rows.length) { tbody.innerHTML = '<tr><td colspan="5" style="color:var(--muted);padding:12px">No long-lived connections above this threshold</td></tr>'; return; }
+  tbody.innerHTML = rows.map(c => `
+    <tr>
+      <td style="display:flex;align-items:center;gap:6px;padding:5px 12px">${iconImg(iconIndex[c.app])} ${esc(c.app)}</td>
+      <td>${esc(c.hostname || c.remoteIp)}</td>
+      <td><span class="proto-pill">${esc(c.protocol || '?')}</span></td>
+      <td>${ageFmt(c.firstSeen)}</td>
+      <td>${c.localPort}</td>
+    </tr>`).join('');
+}
+
+function renderCountries(countries) {
+  const el = document.getElementById('col-countries');
+  if (!countries || !countries.length) { el.innerHTML = '<div class="empty">No GeoIP data yet — waits up to 60s</div>'; return; }
+  const max = countries[0].connections;
+  el.innerHTML = countries.map(c => {
+    const pct = Math.round((c.connections / max) * 100);
+    return `
+    <div class="row">
+      ${bar(pct, 'bar-cyan')}
+      <span class="flag">${countryFlag(c.code)}</span>
+      <div class="row-name">${esc(c.name)}</div>
+      <div class="row-count">${c.connections}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderConns() {
+  const tbody = document.getElementById('conn-tbody');
+  let rows = allConns;
+  if (filterVal) {
+    rows = rows.filter(c =>
+      c.app.toLowerCase().includes(filterVal) ||
+      (c.remoteIp  || '').toLowerCase().includes(filterVal) ||
+      (c.hostname  || '').toLowerCase().includes(filterVal) ||
+      (c.protocol  || '').toLowerCase().includes(filterVal)
+    );
+  }
+  if (trackerFilterOn) rows = rows.filter(c => hostTagIndex[c.remoteIp]);
+  if (persistFilter === 'persistent') rows = rows.filter(c => (c.seenCycles || 0) >= 3);
+  if (persistFilter === 'ephemeral')  rows = rows.filter(c => (c.seenCycles || 0) < 3);
+  if (connSort.col === 'app') {
+    rows = [...rows].sort((a, b) => connSort.dir * a.app.localeCompare(b.app));
+  }
+  if (!rows.length) { tbody.innerHTML = '<tr><td colspan="8" style="color:var(--muted);padding:12px">No connections match filter</td></tr>'; return; }
+
+  // A connection is "unusual" if its protocol wasn't matched to a known port AND
+  // no other currently-active connection shares that remote port.
+  const portCounts = {};
+  allConns.forEach(c => { if (c.protocol === 'Other') portCounts[c.remotePort] = (portCounts[c.remotePort] || 0) + 1; });
+
+  const stateClassOf = c => ({
+    Established: 'state-established',
+    TimeWait:    'state-timewait',
+    CloseWait:   'state-closewait',
+  }[c.state] || '');
+
+  function connRow(c, groupSafeId, groupExpanded) {
+    const indent = !!groupSafeId;
+    const stateClass = stateClassOf(c);
+    const host = c.hostname && c.hostname !== c.remoteIp ? c.hostname : '';
+    const ephemeral = (c.seenCycles || 0) < 3;
+    const classes = [
+      indent ? 'conn-child' : '',
+      persistFilter === 'all' && ephemeral ? 'ephemeral-dim' : '',
+    ].filter(Boolean).join(' ');
+    const unusual = c.protocol === 'Other' && portCounts[c.remotePort] === 1;
+    const warn    = unusual ? `<span class="warn-icon" title="Non-standard port — not a known protocol">⚠</span>` : '';
+    const attrs   = (classes ? ` class="${classes}"` : '') +
+      (indent ? ` data-group="${groupSafeId}" style="display:${groupExpanded ? '' : 'none'}"` : '');
+    return `<tr${attrs}>
+      <td title="${esc(c.app)}" style="display:flex;align-items:center;gap:6px;padding:5px 12px">${indent ? '' : warn}${iconImg(iconIndex[c.app])} ${esc(c.app)}</td>
+      <td title="${esc(host)}">${esc(host || '—')}</td>
+      <td>${esc(c.remoteIp)}</td>
+      <td>${c.remotePort}</td>
+      <td><span class="proto-pill">${esc(c.protocol || '?')}</span></td>
+      <td class="${stateClass}">${esc(c.state)}</td>
+      <td style="color:var(--muted);font-size:12px">${relTime(c.firstSeen)}</td>
+      <td>${c.pid}</td>
+    </tr>`;
+  }
+
+  // Group identical connections (same app/host/ip/port/protocol/state) so
+  // repeated rows collapse behind a single expandable summary.
+  const groups = new Map();
+  rows.forEach(c => {
+    const key = [c.app, c.hostname || '', c.remoteIp, c.remotePort, c.protocol, c.state].join('|');
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(c);
+  });
+
+  tbody.innerHTML = [...groups.values()].map(members => {
+    if (members.length === 1) return connRow(members[0], false);
+
+    const c = members[0];
+    const oldest    = members.reduce((a, b) => (a.firstSeen || 0) < (b.firstSeen || 0) ? a : b);
+    const groupKey  = [c.app, c.hostname || '', c.remoteIp, c.remotePort, c.protocol, c.state].join('|');
+    const safeId    = btoa(unescape(encodeURIComponent(groupKey))).replace(/[^a-zA-Z0-9]/g, '');
+    const expanded  = expandedConnGroups.has(safeId);
+    const stateClass = stateClassOf(c);
+    const host       = c.hostname && c.hostname !== c.remoteIp ? c.hostname : '';
+    const pids       = [...new Set(members.map(m => m.pid))];
+    const ephemeral  = (oldest.seenCycles || 0) < 3;
+    const rowClass   = `conn-group-hdr${expanded ? ' expanded' : ''}${persistFilter === 'all' && ephemeral ? ' ephemeral-dim' : ''}`;
+
+    const headerRow = `<tr class="${rowClass}" onclick="toggleConnGroup('${safeId}')">
+      <td title="${esc(c.app)}" style="display:flex;align-items:center;gap:6px;padding:5px 12px">
+        <span class="expand-toggle">&#9654;</span>${iconImg(iconIndex[c.app])} ${esc(c.app)}<span class="group-count-badge">×${members.length}</span>
+      </td>
+      <td title="${esc(host)}">${esc(host || '—')}</td>
+      <td>${esc(c.remoteIp)}</td>
+      <td>${c.remotePort}</td>
+      <td><span class="proto-pill">${esc(c.protocol || '?')}</span></td>
+      <td class="${stateClass}">${esc(c.state)}</td>
+      <td style="color:var(--muted);font-size:12px">${relTime(oldest.firstSeen)}</td>
+      <td>${pids.length === 1 ? pids[0] : pids.length + ' PIDs'}</td>
+    </tr>`;
+
+    const childRows = members.map(m => connRow(m, safeId, expanded)).join('');
+
+    return headerRow + childRows;
+  }).join('');
+}
+
+function toggleConnGroup(key) {
+  if (expandedConnGroups.has(key)) expandedConnGroups.delete(key);
+  else expandedConnGroups.add(key);
+  renderConns();
+}
+
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+async function poll() {
+  try {
+    const r = await fetch('data/traffic-data.json?t=' + Date.now());
+    if (!r.ok) throw new Error('fetch failed');
+    const data = await r.json();
+
+    document.getElementById('error').style.display = 'none';
+
+    if (!data.updated) return;
+    if (data.updated === lastTs) return;
+    lastTs = data.updated;
+
+    const st = document.getElementById('status');
+    st.textContent = 'live — ' + timeFmt(data.updated);
+    st.className = 'live';
+
+    document.getElementById('t-conns').textContent     = data.totals?.connections ?? '—';
+    document.getElementById('t-apps').textContent      = data.totals?.apps        ?? '—';
+    document.getElementById('t-hosts').textContent     = data.totals?.hosts       ?? '—';
+    document.getElementById('t-countries').textContent = (data.countries || []).length;
+
+    const bw = data.bandwidth || {};
+    document.getElementById('t-rx').textContent         = fmtRate(bw.intervalRx || 0);
+    document.getElementById('t-tx').textContent         = fmtRate(bw.intervalTx || 0);
+    document.getElementById('t-session-rx').textContent = fmtBytes(bw.sessionRx || 0);
+    document.getElementById('t-session-tx').textContent = fmtBytes(bw.sessionTx || 0);
+
+    const newConns = data.newConns || 0;
+    document.getElementById('t-new-wrap').style.display = newConns > 0 ? '' : 'none';
+    document.getElementById('t-new').textContent = newConns;
+    newConnsHistory.push(newConns);
+    if (newConnsHistory.length > 30) newConnsHistory.shift();
+    drawSparkline(newConnsHistory);
+
+    // Build lookup indexes from aggregated data
+    const hostIndex = {};
+    (data.hosts || []).forEach(h => { hostIndex[h.ip] = h.hostname; });
+    iconIndex = {};
+    (data.apps || []).forEach(a => { if (a.iconB64) iconIndex[a.name] = a.iconB64; });
+    allConns = (data.connections || []).map(c => ({ ...c, hostname: hostIndex[c.remoteIp] || '' }));
+
+    renderApps(data.apps);
+    renderHosts(data.hosts);
+    renderProtocols(data.protocols);
+    renderCountries(data.countries);
+    renderConns();
+    if (currentView === 'matrix')    renderMatrix(data.hosts);
+    if (currentView === 'longlived') renderLongLived();
+
+  } catch (e) {
+    document.getElementById('error').style.display = 'block';
+    const st = document.getElementById('status');
+    st.textContent = 'no data';
+    st.className = '';
+  }
+}
+
+document.querySelector(`.ll-toggle-btn[data-threshold="${llThreshold}"]`)?.classList.add('active');
+
+poll();
+setInterval(poll, 3000);
+setInterval(() => fetch('/heartbeat').catch(() => {}), 5000);
+
+const THEMES = [
+  { id: 'midnight',   name: 'Midnight',   bg: '#0d0f12', surface: '#13161b', accent: '#3b82f6' },
+  { id: 'dusk',       name: 'Dusk',       bg: '#171e2d', surface: '#1e2740', accent: '#3bb8c8' },
+  { id: 'ember',      name: 'Ember',      bg: '#140e0b', surface: '#1e1511', accent: '#e07548' },
+  { id: 'daylight',   name: 'Daylight',   bg: '#f0f2f6', surface: '#ffffff', accent: '#3b82f6' },
+  { id: 'arctic',     name: 'Arctic',     bg: '#e0eff8', surface: '#f2f9fc', accent: '#1a8fb0' },
+  { id: 'sakura',     name: 'Sakura',     bg: '#fdf0f4', surface: '#ffffff', accent: '#c83868' },
+  { id: 'lavender',   name: 'Lavender',   bg: '#f2eef8', surface: '#faf8ff', accent: '#7048c8' },
+  { id: 'terracotta', name: 'Terracotta', bg: '#fdf4ee', surface: '#fffaf6', accent: '#2ab098' },
+];
+
+function buildThemePicker() {
+  document.getElementById('theme-menu').innerHTML = THEMES.map(t => `
+    <div class="theme-swatch" id="swatch-${t.id}" onclick="setTheme('${t.id}')">
+      <div class="swatch-preview">
+        <div class="swatch-bg"     style="background:${t.bg}"></div>
+        <div class="swatch-bottom">
+          <div class="swatch-surface" style="background:${t.surface}"></div>
+          <div class="swatch-accent"  style="background:${t.accent}"></div>
+        </div>
+      </div>
+      <div class="swatch-label">${t.name}</div>
+    </div>`).join('');
+}
+
+function setTheme(id) {
+  document.documentElement.setAttribute('data-theme', id);
+  localStorage.setItem('wfm-theme', id);
+  document.querySelectorAll('.theme-swatch').forEach(el => el.classList.remove('active'));
+  const s = document.getElementById('swatch-' + id);
+  if (s) s.classList.add('active');
+  document.getElementById('theme-menu').classList.remove('open');
+}
+
+function toggleThemePicker(e) {
+  e.stopPropagation();
+  document.getElementById('theme-menu').classList.toggle('open');
+}
+
+document.addEventListener('click', () => {
+  document.getElementById('theme-menu').classList.remove('open');
+});
+
+buildThemePicker();
+setTheme(localStorage.getItem('wfm-theme') || 'midnight');
+</script>
+</body>
+</html>
