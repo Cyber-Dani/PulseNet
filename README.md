@@ -1,8 +1,8 @@
 # PulseNet
 
-A lightweight, real-time dashboard for anyone who depends on a stable connection. Whether you are mid-match and wondering why your shots are not registering, on a video call that keeps breaking up, or just trying to figure out why your internet feels slow, this tool gives you a clear picture of what your connection is actually doing — over WiFi or Ethernet.
+A real-time dashboard showing what your network connection is actually doing, over WiFi or Ethernet (link speed, latency, jitter, packet loss, and active traffic).
 
-No installation required. Runs entirely on your machine using PowerShell and your default browser.
+Runs locally using PowerShell and your default browser. No installation required.
 
 ---
 
